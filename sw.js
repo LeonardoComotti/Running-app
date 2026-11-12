@@ -1,6 +1,6 @@
 // Service worker: fa funzionare l'app offline.
 // Quando modifichi l'app, aumenta il numero di versione qui sotto.
-const CACHE = "corsa-v5";
+const CACHE = "corsa-v7";
 const FILES = ["./", "index.html", "manifest.json", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));

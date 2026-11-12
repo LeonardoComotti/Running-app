@@ -118,6 +118,25 @@
   .legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--muted);margin-top:10px}
   .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
   .count{font-size:26px;font-weight:700;line-height:1.1}
+  /* blocchi */
+  .tl{position:relative;margin:4px 0 2px}
+  .tl .bar{display:flex;gap:2px;height:30px}
+  .tl .seg{border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;overflow:hidden;white-space:nowrap;cursor:pointer}
+  .tl .now{position:absolute;top:-4px;bottom:-4px;width:3px;border-radius:2px;background:var(--ink)}
+  .tl .months{display:flex;position:relative;height:16px;font-size:11px;color:var(--muted);margin-top:4px}
+  .tl .months span{position:absolute;transform:translateX(-50%)}
+  .blk{margin:18px 0 10px;padding:12px 14px;border-radius:14px;color:#fff}
+  .blk h3{color:#fff}
+  .blk .small{opacity:.9}
+  .blk .prog{height:5px;border-radius:3px;background:rgba(255,255,255,.35);margin-top:8px;overflow:hidden}
+  .blk .prog i{display:block;height:100%;background:#fff;border-radius:3px}
+  /* grafici */
+  .chart svg{display:block;width:100%;height:auto;overflow:visible}
+  .chart .cap{font-size:13px;color:var(--muted);min-height:18px;margin-top:4px}
+  .chart text{fill:var(--muted);font-size:10px;font-family:inherit}
+  .chart .grid{stroke:var(--line);stroke-width:1}
+  .lg{display:flex;gap:12px;font-size:12px;color:var(--muted);margin:2px 0 6px}
+  .lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
   /* coach */
   .prop{border-left:4px solid var(--accent)}
   .prop.warn{border-left-color:var(--warn)}
@@ -147,6 +166,9 @@
 <dialog id="logDlg"><form method="dialog" id="logForm">
   <h3 id="logTitle">Registra corsa</h3>
   <div id="logPlan" class="note"></div>
+  <button type="button" class="btn" id="importRun" style="width:100%">📂 Compila da file dell'orologio (.tcx / .gpx)</button>
+  <div id="importMsg" class="small" style="margin-top:4px;color:var(--accent)"></div>
+  <input type="file" id="runFile" accept=".tcx,.gpx,application/gpx+xml,application/vnd.garmin.tcx+xml,application/xml,text/xml" hidden>
   <div class="grid2">
     <div><label>Data</label><input type="date" name="date" required></div>
     <div><label>Tipo seduta</label><input name="type" list="types" placeholder="es. Facile"></div>
@@ -329,13 +351,20 @@ const SEED_PROGRAM = [
  ["2027-03-29","Gara","MEZZA MARATONA","Gara! Primi 5 km a 5:00–5:05, poi 4:55–4:58; dal 18° km dai quello che resta. Obiettivo sotto 1h45.","1h45",R.RM,"Non guardarla nei primi km",0,0],
 ].map((r,i)=>({id:"p"+(i+1),start:r[0],phase:r[1],session:r[2],plan:r[3],duration:r[4],pace:r[5],hr:r[6],optional:!!r[7],hipGated:!!r[8]}));
 window.R_MAIN = R;
+const SEED_BLOCKS = [
+  {id:"b0", name:"Rientro",            start:"2026-11-09", end:"2026-11-15", color:"#64748b", goal:"Due corsette leggere dopo lo stop. Solo sensazioni."},
+  {id:"b1", name:"Base aerobica",      start:"2026-11-16", end:"2027-01-10", color:"#0d9488", goal:"Costruire volume facile e la prima soglia. Si chiude con il test 5 km."},
+  {id:"b2", name:"Sviluppo",           start:"2027-01-11", end:"2027-02-07", color:"#2563eb", goal:"Soglia più lunga, ripetute da 1000 m, lungo fino a 100′."},
+  {id:"b3", name:"Specifico mezza",    start:"2027-02-08", end:"2027-03-14", color:"#7c3aed", goal:"Ritmo gara a blocchi sempre più lunghi. Test 10 km il 7 marzo."},
+  {id:"b4", name:"Picco e gara",       start:"2027-03-15", end:"2027-04-04", color:"#dc2626", goal:"Ultimo carico, poi due settimane di scarico e la mezza."},
+];
 const SEED_EVENTS = [
   {id:"e1", date:"2027-01-10", kind:"test", title:"Test 5 km", notes:"Ricalibra i ritmi"},
   {id:"e2", date:"2027-03-07", kind:"test", title:"10 km sotto 45′", notes:"Gara test o prova in piano"},
   {id:"e3", date:"2027-04-04", kind:"gara", title:"Mezza maratona (da scegliere)", notes:"Obiettivo sotto 1h45 · cambia data quando ti iscrivi"},
 ];
 
-const DEFAULT_STATE = {version:2, program:SEED_PROGRAM, events:SEED_EVENTS, log:[], settings:{hrMax:199, hrRest:57}};
+const DEFAULT_STATE = {version:2, program:SEED_PROGRAM, events:SEED_EVENTS, blocks:SEED_BLOCKS, log:[], settings:{hrMax:199, hrRest:57}};
 const KEY = "corsa-app-v1";
 
 /* ============ SALVATAGGIO ============ */
@@ -350,7 +379,8 @@ function migrate(){
   S.events ??= [];      // gare, test, date importanti
   S.dismissed ??= {};   // proposte del coach già accettate/scartate
   S.coachLog ??= [];    // storico delle modifiche accettate
-  S.weekly ??= {};      // bilancio settimanale: { "2026-11-16": {feel, note} }
+  S.weekly ??= {};
+  S.blocks ??= structuredClone(SEED_BLOCKS);   // cicli del programma (modificabili in futuro)      // bilancio settimanale: { "2026-11-16": {feel, note} }
   // vecchio formato "anca durante / giorno dopo" → elenco dolori
   S.log.forEach(l => {
     if(!l.pains){ l.pains = (l.hipDuring!=null && l.hipDuring!=="") ? [{part:"Anca", level:+l.hipDuring, next: l.hipAfter==null||l.hipAfter===""?null:+l.hipAfter}] : []; }
@@ -419,6 +449,32 @@ function weekStats(start){
   return {n:runs.length, km:runs.reduce((a,l)=>a+(Number(l.km)||0),0), sec:runs.reduce((a,l)=>a+totalSec(l),0)};
 }
 
+/* ---- Blocchi / cicli ---- */
+function blockOf(day){ return S.blocks.find(b => day>=b.start && day<=b.end) || null; }
+function blockWeeks(b){ return weeksBetween(b.start, addDays(b.end,1)); }
+function timelineHtml(){
+  if(!S.blocks.length) return "";
+  const a = S.blocks[0].start, z = addDays(S.blocks[S.blocks.length-1].end,1);
+  const total = (parseD(z)-parseD(a))/864e5, pos = d => Math.max(0,Math.min(100,(parseD(d)-parseD(a))/864e5/total*100));
+  const t = today(), cur = blockOf(t);
+  let months = "", d = new Date(parseD(a).getFullYear(), parseD(a).getMonth()+1, 1);
+  while(iso(d) < z){ months += `<span style="left:${pos(iso(d))}%">${MESI[d.getMonth()]}</span>`; d.setMonth(d.getMonth()+1); }
+  return `<div class="card"><div class="row" style="margin-bottom:8px"><b class="sp">Il tuo percorso</b><span class="small muted">${cur?`ora: <b>${esc(cur.name)}</b>`:""}</span></div>
+    <div class="tl"><div class="bar">${S.blocks.map(b=>`<div class="seg" data-goto="${b.id}" style="flex:${blockWeeks(b)};background:${b.color}" title="${esc(b.name)}">${blockWeeks(b)>=3?esc(b.name.split(" ")[0]):""}</div>`).join("")}</div>
+    ${t>=a && t<z ? `<div class="now" style="left:calc(${pos(t)}% - 1px)"></div>`:""}
+    <div class="months">${months}</div></div>
+    <div class="small muted" style="margin-top:4px">${weeksBetween(mondayOf(t), mondayOf(addDays(z,-1)))} settimane alla gara · tocca un blocco per andarci</div></div>`;
+}
+function blockHeader(b){
+  const n = blockWeeks(b), t = today();
+  const passed = t < b.start ? 0 : t > b.end ? n : weeksBetween(b.start, mondayOf(t)) + 1;
+  const st = t < b.start ? `inizia tra ${Math.ceil((parseD(b.start)-parseD(t))/864e5)} gg` : t > b.end ? "completato" : `settimana ${passed} di ${n}`;
+  return `<div class="blk" id="blk-${b.id}" style="background:${b.color}"><div class="row"><h3 class="sp">${esc(b.name)}</h3><span class="small">${st}</span></div>
+    <div class="small">${dayLabel(b.start)} – ${dayLabel(b.end)} · ${n} settiman${n===1?"a":"e"}</div>
+    <div class="small" style="margin-top:4px">${esc(b.goal)}</div>
+    <div class="prog"><i style="width:${Math.round(passed/n*100)}%"></i></div></div>`;
+}
+
 function renderProgram(){
   $("#title").textContent = "Programma";
   const now = mondayOf(today());
@@ -427,9 +483,12 @@ function renderProgram(){
   const weeks = {};
   S.program.forEach(p => (weeks[p.start] ??= []).push(p));
   const keys = Object.keys(weeks).sort();
-  let html = topBanners();
-  if(!keys.length) html = `<div class="empty">Nessuna seduta in programma.</div>`;
+  let html = topBanners() + timelineHtml();
+  if(!keys.length) html += `<div class="empty">Nessuna seduta in programma.</div>`;
+  let curBlock = null;
   keys.forEach(k => {
+    const bl = blockOf(k);
+    if(bl && bl !== curBlock){ curBlock = bl; html += blockHeader(bl); }
     const list = weeks[k], phase = list[0].phase;
     const done = list.filter(p => logFor(p.id)).length, req = list.filter(p=>!p.optional).length;
     const isNow = k===now, past = addDays(k,6) < today();
@@ -458,6 +517,71 @@ function renderProgram(){
   $("#view").innerHTML = html;
 }
 
+/* ---- Grafici (SVG fatti a mano, funzionano offline) ---- */
+const CH = {w:340, h:150, l:30, r:8, t:10, b:22};
+function plannedMin(p){ const m = (p.duration||"").match(/(\d+)(?:\s*[–-]\s*(\d+))?\s*min/); if(m) return m[2]?(+m[1]+ +m[2])/2:+m[1];
+  const h = (p.duration||"").match(/(\d+)h\s*(\d+)?/); return h ? +h[1]*60+(+h[2]||0) : 0; }
+function chartWrap(title, legend, svg, cap){ return `<div class="card chart"><b>${title}</b>${legend?`<div class="lg">${legend}</div>`:""}${svg}<div class="cap">${cap}</div></div>`; }
+function niceMax(v){ const s=[10,20,30,40,60,80,100,120,150,200,250,300,400,500]; return s.find(x=>x>=v) || Math.ceil(v/100)*100; }
+
+function chartVolume(){
+  // ultime 8 settimane + 4 future: minuti fatti (pieno) vs previsti (contorno)
+  const now = mondayOf(today()), weeks = []; for(let i=-7;i<=4;i++) weeks.push(addDays(now,7*i));
+  const data = weeks.map(w => ({w, plan: sessionsOfWeek(w).filter(p=>!p.optional).reduce((a,p)=>a+plannedMin(p),0),
+    done: S.log.filter(l=>l.date>=w && l.date<=addDays(w,6)).reduce((a,l)=>a+totalSec(l)/60,0), feel: S.weekly[w]?.feel}));
+  const max = niceMax(Math.max(60, ...data.map(d=>Math.max(d.plan,d.done))));
+  const {w,h,l,r,t,b} = CH, iw = w-l-r, ih = h-t-b, bw = iw/data.length, y = v => t+ih-(v/max)*ih;
+  let g = [0,max/2,max].map(v=>`<line class="grid" x1="${l}" x2="${w-r}" y1="${y(v)}" y2="${y(v)}"/><text x="${l-4}" y="${y(v)+3}" text-anchor="end">${v}</text>`).join("");
+  data.forEach((d,i) => {
+    const x = l+i*bw+3, bwi = bw-6, cur = d.w===now;
+    if(d.plan) g += `<rect x="${x}" y="${y(d.plan)}" width="${bwi}" height="${t+ih-y(d.plan)}" rx="4" fill="none" stroke="var(--muted)" stroke-dasharray="3 2" stroke-width="1.2"/>`;
+    if(d.done) g += `<rect x="${x+2}" y="${y(d.done)}" width="${bwi-4}" height="${t+ih-y(d.done)}" rx="4" fill="var(--accent)"/>`;
+    if(cur || (i-7)%2===0 && Math.abs(i-7)>1) g += `<text x="${x+bwi/2}" y="${h-8}" text-anchor="middle" style="${cur?"font-weight:700;fill:var(--ink)":""}">${cur?"oggi":parseD(d.w).getDate()+"/"+(parseD(d.w).getMonth()+1)}</text>`;
+    g += `<rect x="${l+i*bw}" y="${t}" width="${bw}" height="${ih+b}" fill="transparent" data-tip="Sett. ${weekLabel(d.w)}: ${Math.round(d.done)}′ fatti su ${Math.round(d.plan)}′ previsti${d.feel?" · "+FEEL[d.feel]:""}"/>`;
+  });
+  return chartWrap("Volume settimanale (minuti)", `<span><i style="background:var(--accent)"></i>fatti</span><span><i style="border:1.2px dashed var(--muted)"></i>previsti</span>`,
+    `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Minuti di corsa per settimana, fatti e previsti">${g}</svg>`, "Tocca una settimana per i dettagli.");
+}
+
+function chartPace(){
+  const runs = S.log.filter(l => isEasyLog(l) && l.km && totalSec(l)).sort((a,b)=>a.date.localeCompare(b.date)).slice(-20);
+  if(runs.length < 2) return chartWrap("Passo delle corse facili", "", "", "Servono almeno 2 corse facili con distanza e durata.");
+  const pts = runs.map(l => ({l, p: totalSec(l)/l.km}));   // secondi al km
+  let lo = Math.min(...pts.map(x=>x.p)), hi = Math.max(...pts.map(x=>x.p)); lo = Math.floor((lo-10)/15)*15; hi = Math.ceil((hi+10)/15)*15;
+  const {w,h,l,r,t,b} = CH, iw = w-l-r, ih = h-t-b;
+  const x = i => l + (pts.length===1?iw/2:i*iw/(pts.length-1)), y = p => t + (p-lo)/(hi-lo)*ih;   // più veloce = più in alto
+  const fmt = p => `${Math.floor(p/60)}:${String(Math.round(p%60)).padStart(2,"0")}`;
+  let g = [lo,(lo+hi)/2,hi].map(v=>`<line class="grid" x1="${l}" x2="${w-r}" y1="${y(v)}" y2="${y(v)}"/><text x="${l-4}" y="${y(v)+3}" text-anchor="end">${fmt(v)}</text>`).join("");
+  g += `<polyline points="${pts.map((q,i)=>`${x(i)},${y(q.p)}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>`;
+  pts.forEach((q,i) => g += `<circle cx="${x(i)}" cy="${y(q.p)}" r="4" fill="var(--accent)" stroke="var(--card)" stroke-width="2"/>
+    <circle cx="${x(i)}" cy="${y(q.p)}" r="14" fill="transparent" data-tip="${dayLabel(q.l.date)}: ${fmt(q.p)}/km${q.l.hrAvg?" · FC "+q.l.hrAvg:""}"/>`);
+  g += `<text x="${l}" y="${h-8}">${dayLabel(runs[0].date)}</text><text x="${w-r}" y="${h-8}" text-anchor="end">${dayLabel(runs[runs.length-1].date)}</text>`;
+  const rb = today() < BASE_END ? RB.F : R.F;
+  return chartWrap("Passo delle corse facili (min/km)", "", `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Passo medio delle corse facili nel tempo">${g}</svg>`,
+    `Più in alto = più veloce. Obiettivo nei facili: ${rb}. Se a parità di sforzo il passo migliora, stai migliorando.`);
+}
+
+function chartPain(){
+  const since = addDays(today(),-55), runs = S.log.filter(l=>l.date>=since).sort((a,b)=>a.date.localeCompare(b.date));
+  if(!runs.length) return "";
+  const {w,l,r,t} = CH, h = 90, b = 20, iw = w-l-r, ih = h-t-b;
+  const x = d => l + (parseD(d)-parseD(since))/864e5/55*iw, y = v => t+ih-(v/10)*ih;
+  let g = [0,3,10].map(v=>`<line class="grid" x1="${l}" x2="${w-r}" y1="${y(v)}" y2="${y(v)}" ${v===3?'stroke-dasharray="4 3"':""}/><text x="${l-4}" y="${y(v)+3}" text-anchor="end">${v}</text>`).join("");
+  runs.forEach(rn => { const v = painOf(rn), c = v>=3 ? "var(--warn)" : v>0 ? "var(--z3)" : "var(--done)";
+    g += `<circle cx="${x(rn.date)}" cy="${y(v)}" r="5" fill="${c}" stroke="var(--card)" stroke-width="2"/><circle cx="${x(rn.date)}" cy="${y(v)}" r="14" fill="transparent" data-tip="${dayLabel(rn.date)}: ${v?esc(painsText(rn)):"nessun dolore"}"/>`; });
+  g += `<text x="${l}" y="${h-4}">${dayLabel(since)}</text><text x="${w-r}" y="${h-4}" text-anchor="end">oggi</text>`;
+  return chartWrap("Dolori (ultime 8 settimane)", `<span><i style="background:var(--done)"></i>nessuno</span><span><i style="background:var(--z3)"></i>lieve</span><span><i style="background:var(--warn)"></i>3 o più</span>`,
+    `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Dolore massimo per uscita">${g}</svg>`, "Sopra la linea tratteggiata (3) il coach toglie la qualità.");
+}
+function chartsHtml(){
+  if(!S.log.length) return "";
+  return `<h2>Grafici</h2>` + chartVolume() + chartPace() + chartPain();
+}
+document.addEventListener("click", e => {   // tocca un elemento del grafico → mostra il valore sotto
+  const el = e.target.closest("[data-tip]"); if(!el) return;
+  const cap = el.closest(".chart")?.querySelector(".cap"); if(cap) cap.textContent = el.dataset.tip;
+});
+
 function renderLog(){
   $("#title").textContent = "Diario";
   const tot = S.log.reduce((a,l)=>a+(Number(l.km)||0),0);
@@ -468,6 +592,7 @@ function renderLog(){
   const pending = S.log.filter(l => l.date < today() && l.date >= addDays(today(),-3) && (l.pains||[]).some(p=>p.level>0 && p.next==null));
   if(pending.length) html += `<div class="card" style="margin-top:12px;background:var(--warn-soft);border-color:transparent"><b style="color:var(--warn)">Come va il giorno dopo?</b>
     <div class="small">Avevi segnalato un dolore (${pending.map(l=>esc(painsText(l))).join("; ")}). Tocca la corsa e indica come sta oggi.</div></div>`;
+  html += chartsHtml();
   html += `<h2>Uscite</h2>`;
   const list = [...S.log].sort((a,b)=> b.date.localeCompare(a.date));
   if(!list.length) html += `<div class="empty">Ancora nessuna corsa registrata.<br>Tocca <b>+</b> o «Registra» in una seduta del programma.</div>`;
@@ -523,7 +648,7 @@ function renderOther(){
   <h2>Ripristino</h2>
   <div class="card"><div class="note">Ricarica il programma per la mezza (16 nov → 4 apr) e le date di test. Il diario delle corse non viene toccato.</div>
     <div class="actions"><button class="btn danger" id="resetProg">Ripristina programma iniziale</button></div></div>
-  <p class="small muted" style="text-align:center">Corsa · versione 5</p>`;
+  <p class="small muted" style="text-align:center">Corsa · versione 7</p>`;
   $("#exportJson").onclick = exportJson;
   $("#importJson").onclick = () => $("#importFile").click();
   $("#exportCsv").onclick = exportCsv;
@@ -531,7 +656,7 @@ function renderOther(){
     if(!(a>b && b>30 && a<240)) return toast("Valori non validi");
     S.settings.hrMax=a; S.settings.hrRest=b; save(); toast("Zone aggiornate"); };
   $("#resetProg").onclick = () => { if(confirm("Ripristinare il programma iniziale? Le sedute modificate o aggiunte andranno perse.")){
-    S.program = structuredClone(SEED_PROGRAM); SEED_EVENTS.forEach(e=>{ if(!S.events.some(x=>x.id===e.id)) S.events.push({...e}); }); save(); toast("Programma ripristinato"); } };
+    S.program = structuredClone(SEED_PROGRAM); S.blocks = structuredClone(SEED_BLOCKS); SEED_EVENTS.forEach(e=>{ if(!S.events.some(x=>x.id===e.id)) S.events.push({...e}); }); save(); toast("Programma ripristinato"); } };
 }
 
 /* ============ BILANCIO SETTIMANALE ============ */
@@ -965,8 +1090,53 @@ function updPace(){ const sec = (+logF.min.value||0)*60 + (+logF.sec.value||0), 
   $("#paceCalc").textContent = [km&&sec ? "Passo medio: "+pace(sec,km) : "", z&&z.n&&logF.hrAvg.value ? "FC media in "+z.n : ""].filter(Boolean).join(" · "); }
 ["km","min","sec","hrAvg"].forEach(n => logF[n].addEventListener("input", updPace));
 
+/* ---- Import da file dell'orologio (Huawei Health «Esporta percorso» o Health Sync) ----
+   Legge solo il riepilogo: data, distanza, durata, FC media e massima. */
+function parseRunFile(text){
+  const doc = new DOMParser().parseFromString(text, "application/xml");
+  if(doc.querySelector("parsererror")) throw new Error("File non leggibile");
+  const all = (n) => [...doc.getElementsByTagNameNS("*", n)];
+  const num = el => el ? parseFloat(el.textContent) : NaN;
+  let start, sec = 0, m = 0, hrs = [];
+  const laps = all("Lap");
+  if(laps.length){                                  // ---- TCX
+    start = laps[0].getAttribute("StartTime") || all("Id")[0]?.textContent;
+    laps.forEach(l => { sec += num([...l.children].find(c=>c.localName==="TotalTimeSeconds")); m += num([...l.children].find(c=>c.localName==="DistanceMeters")) || 0; });
+    all("HeartRateBpm").forEach(h => { if(h.parentElement.localName==="Trackpoint"){ const v = num(h.getElementsByTagNameNS("*","Value")[0]); if(v>0) hrs.push(v); } });
+    if(!m){ const d = all("DistanceMeters").map(num).filter(v=>!isNaN(v)); m = d.length ? Math.max(...d) : 0; }
+  } else {                                          // ---- GPX
+    const pts = all("trkpt").map(p => ({lat:+p.getAttribute("lat"), lon:+p.getAttribute("lon"),
+      t: p.getElementsByTagNameNS("*","time")[0]?.textContent, hr: num(p.getElementsByTagNameNS("*","hr")[0])}));
+    if(pts.length < 2) throw new Error("Nessun percorso nel file");
+    const rad = x => x*Math.PI/180;
+    for(let i=1;i<pts.length;i++){ const a=pts[i-1], b=pts[i];
+      const dLat=rad(b.lat-a.lat), dLon=rad(b.lon-a.lon);
+      const h = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLon/2)**2;
+      m += 2*6371000*Math.asin(Math.sqrt(h)); }
+    start = pts[0].t; const end = pts[pts.length-1].t;
+    if(start && end) sec = (new Date(end)-new Date(start))/1000;
+    hrs = pts.map(p=>p.hr).filter(v=>v>0);
+  }
+  if(!sec && !m) throw new Error("Nel file non ci sono dati di corsa");
+  return { date: start ? iso(new Date(start)) : null, km: m ? Math.round(m/10)/100 : null, sec: Math.round(sec)||null,
+    hrAvg: hrs.length ? Math.round(hrs.reduce((a,b)=>a+b,0)/hrs.length) : null, hrMax: hrs.length ? Math.max(...hrs) : null };
+}
+$("#importRun").onclick = () => $("#runFile").click();
+$("#runFile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if(!f) return;
+  try{
+    const r = parseRunFile(await f.text());
+    if(r.date) logF.date.value = r.date;
+    if(r.km) logF.km.value = r.km;
+    if(r.sec){ logF.min.value = Math.floor(r.sec/60); logF.sec.value = r.sec%60; }
+    if(r.hrAvg) logF.hrAvg.value = r.hrAvg;
+    if(r.hrMax) logF.hrMax.value = r.hrMax;
+    updPace(); $("#importMsg").textContent = "✓ Dati importati: controlla e aggiungi sforzo e dolori.";
+  }catch(err){ $("#importMsg").textContent = "⚠ " + (err.message || "Non riesco a leggere il file"); }
+};
+
 function openLog(entry, prog){
-  logF.reset(); const e = entry || {};
+  logF.reset(); $("#importMsg").textContent = ""; const e = entry || {};
   logF.id.value = e.id || ""; logF.programId.value = e.programId || (prog&&prog.id) || "";
   const p = prog || S.program.find(x=>x.id===e.programId);
   logF.date.value = e.date || today();
@@ -1020,8 +1190,9 @@ $("#progDlg").addEventListener("close", () => {
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); scrollTo(0,0); });
 $("#fab").onclick = () => openLog(null, null);
 $("#view").addEventListener("click", e => {
-  const t = e.target.closest("[data-do],[data-editlog],[data-editprog],[data-addprog],[data-day],[data-cal],[data-newev],[data-editev],[data-week],[data-backup]"); if(!t) return;
+  const t = e.target.closest("[data-do],[data-editlog],[data-editprog],[data-addprog],[data-day],[data-cal],[data-newev],[data-editev],[data-week],[data-backup],[data-goto]"); if(!t) return;
   if(t.dataset.week){ e.preventDefault(); openWeek(t.dataset.week); return; }
+  if(t.dataset.goto){ document.getElementById("blk-"+t.dataset.goto)?.scrollIntoView({behavior:"smooth", block:"start"}); return; }
   if(t.dataset.backup!==undefined){ exportJson(); return; }
   if(t.dataset.cal){ const [y,m] = calMonth.split("-").map(Number); const d = new Date(y, m-1+(+t.dataset.cal), 1); calMonth = iso(d).slice(0,7); renderCalendar(); }
   else if(t.dataset.day) openDay(t.dataset.day);
