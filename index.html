@@ -71,9 +71,25 @@
   dialog{border:0;border-radius:18px;padding:0;width:min(560px,94vw);max-height:92vh;background:var(--card);color:var(--ink)}
   dialog::backdrop{background:rgba(0,0,0,.45)}
   dialog form{padding:18px}
-  #runDlg .stats{grid-template-columns:repeat(3,1fr)}
-  #runDlg .stat .v{font-size:19px}
-  #runDlg .chart{padding:12px;margin:10px 0 0}
+  /* dettaglio corsa a tutto schermo */
+  #runDlg{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;margin:0;border-radius:0;background:var(--bg)}
+  .runhead{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;background:var(--card);border-bottom:1px solid var(--line);padding:calc(env(safe-area-inset-top) + 8px) 12px 8px}
+  #runBody{padding:12px 12px calc(env(safe-area-inset-bottom) + 24px);max-width:720px;margin:0 auto}
+  #runBody .stats{grid-template-columns:repeat(3,1fr);margin-bottom:12px}
+  #runBody .stat .v{font-size:20px}
+  #runBody .chart.big{padding:12px 10px}
+  #runBody .chart.big svg{touch-action:pan-y}
+  #runBody .chart text{font-size:11px}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px}
+  .zbar{display:flex;gap:2px;height:22px;margin:10px 0 8px}
+  .zbar i{border-radius:5px;min-width:3px}
+  .zrow{display:flex;align-items:center;gap:8px;font-size:14px;margin-top:8px}
+  .zrow > i{width:12px;height:12px;border-radius:3px;flex:none}
+  .zrow.dim{opacity:.45}
+  .zrow .zmin{width:58px;text-align:right;font-variant-numeric:tabular-nums}
+  .zrow .zpc{width:40px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+  .ztrack{height:4px;background:var(--line);border-radius:2px;margin:4px 0 0 20px;overflow:hidden}
+  .ztrack i{display:block;height:100%;border-radius:2px}
   dialog h3{margin-bottom:12px}
   label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
   input,select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
@@ -232,10 +248,12 @@
 </form></dialog>
 
 <!-- Dettaglio corsa -->
-<dialog id="runDlg"><form method="dialog">
+<dialog id="runDlg"><div class="runhead">
+  <button class="btn ghost" type="button" id="runBack" aria-label="Indietro" style="font-size:22px;padding:4px 8px">←</button>
+  <div class="sp"><h3 id="runTitle"></h3><div class="small muted" id="runDate"></div></div>
+  <button class="btn primary" type="button" id="runEdit">Modifica</button></div>
   <div id="runBody"></div>
-  <div class="actions"><button class="btn primary" type="button" id="runEdit">Modifica</button><span class="sp"></span><button class="btn" value="close">Chiudi</button></div>
-</form></dialog>
+</dialog>
 
 <!-- Bilancio della settimana -->
 <dialog id="weekDlg"><form method="dialog" id="weekForm">
@@ -658,7 +676,7 @@ function renderOther(){
   <h2>Ripristino</h2>
   <div class="card"><div class="note">Ricarica il programma per la mezza (16 nov → 4 apr) e le date di test. Il diario delle corse non viene toccato.</div>
     <div class="actions"><button class="btn danger" id="resetProg">Ripristina programma iniziale</button></div></div>
-  <p class="small muted" style="text-align:center">Corsa · versione 9</p>`;
+  <p class="small muted" style="text-align:center">Corsa · versione 10</p>`;
   $("#exportJson").onclick = exportJson;
   $("#importJson").onclick = () => $("#importFile").click();
   $("#exportCsv").onclick = exportCsv;
@@ -1109,17 +1127,20 @@ function parseRunFile(text){
   const all = (root, n) => [...root.getElementsByTagNameNS("*", n)];
   const kid = (el, n) => el ? [...el.children].find(c => c.localName===n) : null;
   const num = el => el ? parseFloat(el.textContent) : NaN;
+  // FC: nei file la chiamano in modi diversi (HeartRateBpm/Value, hr, heartrate, HeartRate…)
+  const hrOf = el => { const c = [...el.getElementsByTagName("*")].find(x => /^(heartratebpm|hr|heartrate|heart_rate|heartratevalue)$/i.test(x.localName));
+    if(!c) return NaN; const v = c.children.length ? num(c.getElementsByTagNameNS("*","Value")[0] || c.children[0]) : num(c); return v>30 && v<240 ? v : NaN; };
   let pts = [], lapSec = 0, lapM = 0;
   const laps = all(doc, "Lap");
   if(laps.length){                                    // ---- TCX
     laps.forEach(l => { lapSec += num(kid(l,"TotalTimeSeconds")) || 0; lapM += num(kid(l,"DistanceMeters")) || 0; });
     pts = all(doc, "Trackpoint").map(tp => ({ time: kid(tp,"Time")?.textContent, d: num(kid(tp,"DistanceMeters")),
-      hr: num(kid(kid(tp,"HeartRateBpm"),"Value")), alt: num(kid(tp,"AltitudeMeters")),
+      hr: hrOf(tp), alt: num(kid(tp,"AltitudeMeters")),
       lat: num(kid(kid(tp,"Position"),"LatitudeDegrees")), lon: num(kid(kid(tp,"Position"),"LongitudeDegrees")) }));
     if(!pts.length) pts = [{time: laps[0].getAttribute("StartTime") || all(doc,"Id")[0]?.textContent}];
   } else {                                            // ---- GPX
     pts = all(doc, "trkpt").map(p => ({ lat:+p.getAttribute("lat"), lon:+p.getAttribute("lon"),
-      time: all(p,"time")[0]?.textContent, hr: num(all(p,"hr")[0]), alt: num(all(p,"ele")[0]), d: NaN }));
+      time: all(p,"time")[0]?.textContent, hr: hrOf(p), alt: num(all(p,"ele")[0]), d: NaN }));
     if(pts.length < 2) throw new Error("Nel file non c'è nessun tracciato");
   }
   // distanza cumulativa: dal file se c'è, altrimenti dal GPS
@@ -1140,7 +1161,9 @@ function parseRunFile(text){
   const totalM = lapM || (timed.length ? timed[timed.length-1].d : 0);
   const totalS = lapSec || (timed.length ? timed[timed.length-1].t : 0);
   if(!totalS && !totalM) throw new Error("Nel file non ci sono dati di corsa");
-  const hrs = timed.map(p=>p.hr).filter(v=>v>0);
+  let hrs = timed.map(p=>p.hr).filter(v=>v>0);
+  const lapAvg = laps.length ? laps.map(l => num(kid(kid(l,"AverageHeartRateBpm"),"Value"))).filter(v=>v>0) : [];
+  const lapMax = laps.length ? laps.map(l => num(kid(kid(l,"MaximumHeartRateBpm"),"Value"))).filter(v=>v>0) : [];
 
   // tempi per km (interpolati)
   const splits = [];
@@ -1170,7 +1193,8 @@ function parseRunFile(text){
   const alts = timed.map(p=>p.alt).filter(v=>!isNaN(v));
   let gain = 0; for(let i=1;i<alts.length;i++){ const dd = alts[i]-alts[i-1]; if(dd>0) gain += dd; }
   return { date: pts[0].time ? iso(new Date(pts[0].time)) : null, km: totalM ? Math.round(totalM/10)/100 : null, sec: Math.round(totalS)||null,
-    hrAvg: hrs.length ? Math.round(hrs.reduce((a,b)=>a+b,0)/hrs.length) : null, hrMax: hrs.length ? Math.max(...hrs) : null,
+    hrAvg: hrs.length ? Math.round(hrs.reduce((a,b)=>a+b,0)/hrs.length) : lapAvg.length ? Math.round(lapAvg.reduce((a,b)=>a+b,0)/lapAvg.length) : null,
+    hrMax: hrs.length ? Math.max(...hrs) : lapMax.length ? Math.max(...lapMax) : null, noHrTrack: !hrs.length,
     gain: alts.length ? Math.round(gain) : null, splits, track };
 }
 let pendingImport = null;   // dati del file in attesa di essere salvati con la corsa
@@ -1182,7 +1206,7 @@ function applyImport(r){
   if(r.hrAvg) logF.hrAvg.value = r.hrAvg;
   if(r.hrMax) logF.hrMax.value = r.hrMax;
   updPace();
-  $("#importMsg").textContent = `✓ Importati: ${r.km??"–"} km${r.splits?.length?`, ${r.splits.length} parziali`:""}${r.track?", grafici":""}. Aggiungi sforzo e dolori e salva.`;
+  $("#importMsg").textContent = `✓ Importati: ${r.km??"–"} km${r.splits?.length?`, ${r.splits.length} parziali`:""}${r.track?", grafici":""}.${r.noHrTrack?" ⚠ Nel file non c'è la frequenza cardiaca minuto per minuto.":""} Aggiungi sforzo e dolori e salva.`;
 }
 $("#importRun").onclick = () => $("#runFile").click();
 $("#runFile").onchange = async e => {
@@ -1246,7 +1270,8 @@ $("#logDlg").addEventListener("close", () => {
   pendingImport = null; save(); render(); toast("Corsa salvata");
 });
 
-/* ============ DETTAGLIO CORSA (grafici dal file dell'orologio) ============ */
+/* ============ DETTAGLIO CORSA (a tutto schermo, grafici dal file dell'orologio) ============ */
+const COL = {pace:"#2563eb", hr:"#e11d48", alt:"#a16207"};
 function smoothPace(tr){   // passo (s/km) su una finestra di ~250 m, per togliere il rumore del GPS
   const out = []; let j = 0;
   for(let i=0;i<tr.d.length;i++){
@@ -1257,34 +1282,69 @@ function smoothPace(tr){   // passo (s/km) su una finestra di ~250 m, per toglie
   return out;
 }
 const fmtPace = p => p==null ? "–" : `${Math.floor(p/60)}:${String(Math.round(p%60)).padStart(2,"0")}`;
-function lineChart({id, xs, ys, yFmt, invert, color, bands, area, title, unit, tipFn}){
-  const W = 340, H = 140, l = 34, r = 8, t = 8, b = 20, iw = W-l-r, ih = H-t-b;
+// Fasce di passo dai tuoi ritmi (blocco base o principale, in base alla data della corsa)
+function paceBands(date){
+  const P = date < BASE_END ? RB : R;
+  const rng = s => { const m = s.match(/(\d+):(\d+)\D+(\d+):(\d+)/); return [(+m[1])*60+(+m[2]), (+m[3])*60+(+m[4])]; };
+  const V = rng(P.V), Sg = rng(P.S), RMr = rng(P.RM), M = rng(P.M), F = rng(P.F), mid = (a,b) => Math.round((a+b)/2);
+  return [
+    {n:"Più veloce", lo:0,                  hi:V[0],                 c:"#9f1239"},
+    {n:"Ripetute",   lo:V[0],               hi:mid(V[1],Sg[0]),      c:"#ef4444"},
+    {n:"Soglia",     lo:mid(V[1],Sg[0]),    hi:mid(Sg[1],RMr[0]),    c:"#f97316"},
+    {n:"Ritmo mezza",lo:mid(Sg[1],RMr[0]),  hi:mid(RMr[1],M[0]),     c:"#8b5cf6"},
+    {n:"Medio",      lo:mid(RMr[1],M[0]),   hi:mid(M[1],F[0]),       c:"#0ea5e9"},
+    {n:"Facile",     lo:mid(M[1],F[0]),     hi:F[1]+15,              c:"#22c55e"},
+    {n:"Recupero",   lo:F[1]+15,            hi:1e9,                  c:"#94a3b8"},
+  ];
+}
+function timeInBands(tr, values, bands){
+  const acc = bands.map(()=>0);
+  for(let i=1;i<tr.t.length;i++){
+    const dt = tr.t[i]-tr.t[i-1], v = values[i]; if(v==null || dt<=0 || dt>60) continue;
+    const k = bands.findIndex(b => v>=b.lo && v<b.hi); if(k>=0) acc[k] += dt;
+  }
+  return acc;
+}
+function zonesCard(title, bands, secs, fmtRange){
+  const tot = secs.reduce((a,b)=>a+b,0); if(!tot) return "";
+  const rows = bands.map((b,i)=>({...b, s:secs[i]})).filter(b=>b.s>0);
+  return `<div class="card"><b>${title}</b>
+    <div class="zbar">${rows.map(b=>`<i style="flex:${b.s};background:${b.c}" title="${b.n}"></i>`).join("")}</div>
+    ${bands.map((b,i)=>{ const pc = secs[i]/tot*100; return `<div class="zrow ${secs[i]?"":"dim"}"><i style="background:${b.c}"></i><span class="sp"><b>${b.n}</b> <span class="muted">${fmtRange(b)}</span></span>
+      <span class="zmin">${fmtDur(secs[i])||"–"}</span><span class="zpc">${pc>=0.5?Math.round(pc)+"%":"–"}</span></div>
+      <div class="ztrack"><i style="width:${pc}%;background:${b.c}"></i></div>`; }).join("")}</div>`;
+}
+function lineChart({id, xs, ys, yFmt, invert, color, bands, area, title, unit}){
+  const W = 360, H = 220, l = 38, r = 10, t = 10, b = 22, iw = W-l-r, ih = H-t-b;
   const vals = ys.filter(v=>v!=null); if(vals.length < 2) return "";
   const sorted = [...vals].sort((a,b)=>a-b), q = p => sorted[Math.floor(p*(sorted.length-1))];
   let lo = q(0.02), hi = q(0.98); const pad = (hi-lo)*0.15 || 5; lo -= pad; hi += pad;
-  if(bands){ lo = Math.min(lo, bands[0].lo); }
   const xmax = xs[xs.length-1] || 1, X = x => l + x/xmax*iw;
   const Y = v => { const f = (Math.min(hi,Math.max(lo,v))-lo)/(hi-lo); return invert ? t + f*ih : t + ih - f*ih; };
   let g = "";
-  if(bands) bands.forEach(z => { if(z.hi < lo || z.lo > hi) return; const y1 = Y(Math.min(hi,z.hi)), y2 = Y(Math.max(lo,z.lo));
-    g += `<rect x="${l}" y="${Math.min(y1,y2)}" width="${iw}" height="${Math.abs(y2-y1)}" fill="${z.c}" opacity=".18"/><text x="${W-r-2}" y="${Math.min(y1,y2)+10}" text-anchor="end">${z.n}</text>`; });
-  [lo+(hi-lo)*0.1, (lo+hi)/2, hi-(hi-lo)*0.1].forEach(v => g += `<line class="grid" x1="${l}" x2="${W-r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${l-4}" y="${Y(v)+3}" text-anchor="end">${yFmt(v)}</text>`);
+  if(bands) bands.forEach(z => { if(z.hi <= lo || z.lo >= hi) return; const y1 = Y(Math.min(hi,z.hi)), y2 = Y(Math.max(lo,z.lo));
+    g += `<rect x="${l}" y="${Math.min(y1,y2)}" width="${iw}" height="${Math.abs(y2-y1)}" fill="${z.c}" opacity=".16"/>`;
+    if(Math.abs(y2-y1) > 12) g += `<text x="${W-r-3}" y="${Math.min(y1,y2)+11}" text-anchor="end" style="fill:${z.c};font-weight:700">${z.n}</text>`; });
+  [lo+(hi-lo)*0.1, (lo+hi)/2, hi-(hi-lo)*0.1].forEach(v => g += `<line class="grid" x1="${l}" x2="${W-r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${l-5}" y="${Y(v)+3}" text-anchor="end">${yFmt(v)}</text>`);
   const pts = xs.map((x,i)=> ys[i]==null ? null : `${X(x).toFixed(1)},${Y(ys[i]).toFixed(1)}`);
   let path = "", open = false; pts.forEach(pt => { if(!pt){ open=false; return; } path += (open?"L":"M")+pt; open = true; });
-  if(area){ const base = t+ih; g += `<path d="M${X(xs[0])},${base}L${pts.filter(Boolean).join("L")}L${X(xs[xs.length-1])},${base}Z" fill="${color}" opacity=".25"/>`; }
-  g += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`;
+  if(area){ const base = t+ih; g += `<path d="M${X(xs[0])},${base}L${pts.filter(Boolean).join("L")}L${X(xs[xs.length-1])},${base}Z" fill="${color}" opacity=".22"/>`; }
+  g += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
   for(let k=0;k<=Math.floor(xmax/1000);k+= xmax>12000?2:1) g += `<text x="${X(k*1000)}" y="${H-6}" text-anchor="middle">${k}</text>`;
-  g += `<line class="cross" x1="0" x2="0" y1="${t}" y2="${t+ih}" stroke="var(--ink)" stroke-width="1" opacity="0"/><rect class="hit" x="${l}" y="${t}" width="${iw}" height="${ih}" fill="transparent"/>`;
-  return `<div class="card chart" data-chart="${id}"><b>${title}</b> <span class="small muted">${unit}</span>
-    <svg viewBox="0 0 ${W} ${H}" data-xmax="${xmax}" data-l="${l}" data-iw="${iw}">${g}</svg><div class="cap">Tocca il grafico per i valori · asse: km</div></div>`;
+  g += `<line class="cross" x1="0" x2="0" y1="${t}" y2="${t+ih}" stroke="var(--ink)" stroke-width="1.2" opacity="0"/><circle class="dot" r="5" fill="${color}" stroke="var(--card)" stroke-width="2" opacity="0"/>
+    <rect class="hit" x="${l}" y="${t}" width="${iw}" height="${ih}" fill="transparent"/>`;
+  return `<div class="card chart big" data-chart="${id}"><div class="row"><b class="sp"><i class="sw" style="background:${color}"></i>${title}</b><span class="small muted">${unit}</span></div>
+    <svg viewBox="0 0 ${W} ${H}" data-xmax="${xmax}" data-l="${l}" data-iw="${iw}" data-lo="${lo}" data-hi="${hi}" data-t="${t}" data-ih="${ih}" data-inv="${invert?1:0}">${g}</svg>
+    <div class="cap">Tocca o trascina sul grafico · asse orizzontale in km</div></div>`;
 }
 let runCtx = null;
 function openRun(id){
   const l = S.log.find(x=>x.id===id); if(!l) return;
   const sec = totalSec(l), p = S.program.find(x=>x.id===l.programId), tr = l.track;
-  let h = `<div class="row"><h3 class="sp">${esc(l.type)||"Corsa"}</h3><span class="small muted">${dayLabel(l.date)}</span></div>
-    ${p?`<div class="small muted">Seduta: ${esc(p.session)} · ${esc(p.plan)}</div>`:""}
-    <div class="stats" style="margin-top:10px">
+  $("#runTitle").textContent = (l.type||"Corsa");
+  $("#runDate").textContent = dayLabel(l.date);
+  let h = `${p?`<div class="note">Seduta: <b>${esc(p.session)}</b> · ${esc(p.plan)}</div>`:""}
+    <div class="stats">
       <div class="stat"><div class="v">${l.km??"–"}</div><div class="l">km</div></div>
       <div class="stat"><div class="v">${fmtDur(sec)}</div><div class="l">tempo</div></div>
       <div class="stat"><div class="v">${l.km&&sec?pace(sec,l.km).replace("/km",""):"–"}</div><div class="l">min/km</div></div>
@@ -1295,34 +1355,56 @@ function openRun(id){
   if((l.pains||[]).length) h += `<div class="note">Dolori: ${esc(painsText(l))}</div>`;
   if(l.notes) h += `<div class="note">${esc(l.notes)}</div>`;
   if(tr){
+    const pb = paceBands(l.date), hz = zones().map(z=>({n:z.n, lo:z.lo, hi:z.hi+1, c:z.c, name:z.name}));
+    hz[0].lo = 0; hz[hz.length-1].hi = 260;
     runCtx = {tr, pace: smoothPace(tr)};
-    h += lineChart({id:"pace", xs:tr.d, ys:runCtx.pace, yFmt:fmtPace, invert:true, color:"var(--accent)", title:"Passo", unit:"min/km · più in alto = più veloce"});
-    if(tr.hr) h += lineChart({id:"hr", xs:tr.d, ys:tr.hr, yFmt:v=>Math.round(v), color:"#dc2626", title:"Frequenza cardiaca", unit:"bpm, con le tue zone",
-      bands: zones().map(z=>({lo:z.lo, hi:z.hi, c:z.c, n:z.n}))});
-    if(tr.alt) h += lineChart({id:"alt", xs:tr.d, ys:tr.alt, yFmt:v=>Math.round(v), color:"#78716c", area:true, title:"Altimetria", unit:"m"});
+    h += lineChart({id:"pace", xs:tr.d, ys:runCtx.pace, yFmt:fmtPace, invert:true, color:COL.pace, bands:pb, title:"Passo", unit:"min/km · in alto = più veloce"});
+    h += zonesCard("Tempo nelle fasce di passo", pb, timeInBands(tr, runCtx.pace, pb),
+      b => b.lo===0 ? `< ${fmtPace(b.hi)}` : b.hi>=1e9 ? `> ${fmtPace(b.lo)}` : `${fmtPace(b.lo)}–${fmtPace(b.hi)}`);
+    if(tr.hr){
+      h += lineChart({id:"hr", xs:tr.d, ys:tr.hr, yFmt:v=>Math.round(v), color:COL.hr, bands:hz, title:"Frequenza cardiaca", unit:"bpm"});
+      h += zonesCard("Tempo nelle zone cardiache", hz.map(z=>({...z, n:`${z.n} ${z.name}`})), timeInBands(tr, tr.hr, hz),
+        b => b.lo===0 ? `< ${b.hi}` : b.hi>=260 ? `> ${b.lo}` : `${b.lo}–${b.hi-1}`);
+    } else h += `<div class="card note">⚠ In questo file non c'è la frequenza cardiaca punto per punto, quindi niente grafico FC e tempo nelle zone. Se l'orologio l'aveva registrata, mandami il file: sistemo la lettura.</div>`;
+    if(tr.alt) h += lineChart({id:"alt", xs:tr.d, ys:tr.alt, yFmt:v=>Math.round(v), color:COL.alt, area:true, title:"Altimetria", unit:"m"});
   }
   if(l.splits?.length){
-    const best = Math.min(...l.splits.filter(s=>!s.part).map(s=>s.sec)), worst = Math.max(...l.splits.filter(s=>!s.part).map(s=>s.sec));
+    const full = l.splits.filter(s=>!s.part), best = Math.min(...full.map(s=>s.sec)), worst = Math.max(...full.map(s=>s.sec));
     h += `<div class="card"><b>Parziali per km</b><div style="margin-top:8px">${l.splits.map(s => {
-      const pk = s.part ? s.sec/s.part*1000 : s.sec, w = worst>best ? 35 + 65*(1-(pk-best)/(worst-best||1)) : 100;
-      return `<div class="row small" style="margin:3px 0"><span style="width:38px">${s.part?(s.km+""):"km "+s.km}</span>
-        <span class="sp"><span style="display:block;height:14px;border-radius:4px;width:${Math.max(10,Math.min(100,w))}%;background:${pk===best&&!s.part?"var(--accent)":"var(--accent-soft)"}"></span></span>
-        <b style="width:44px;text-align:right">${fmtPace(pk)}</b><span class="muted" style="width:52px;text-align:right">${s.hr?s.hr+" bpm":""}</span></div>`; }).join("")}</div></div>`;
+      const pk = s.part ? s.sec/s.part*1000 : s.sec, w = worst>best ? 30 + 70*(1-(pk-best)/(worst-best)) : 100;
+      return `<div class="row small" style="margin:5px 0"><span style="width:44px">${s.part?s.km+" km":"km "+s.km}</span>
+        <span class="sp"><span style="display:block;height:18px;border-radius:5px;width:${Math.max(10,Math.min(100,w))}%;background:${COL.pace};opacity:${pk===best&&!s.part?1:.45}"></span></span>
+        <b style="width:44px;text-align:right">${fmtPace(pk)}</b><span class="muted" style="width:58px;text-align:right">${s.hr?s.hr+" bpm":""}</span></div>`; }).join("")}</div></div>`;
   }
-  if(!tr && !l.splits) h += `<div class="card note">Per vedere i grafici di passo, FC e altimetria importa il file dell'orologio: «Modifica» → «📂 Compila da file dell'orologio», oppure condividi il file da Huawei Health all'app Corsa.</div>`;
+  if(!tr && !l.splits) h += `<div class="card note">Per vedere grafici e tempo nelle zone importa il file dell'orologio: «Modifica» → «📂 Compila da file dell'orologio», oppure condividi il file da Huawei Health all'app Corsa.</div>`;
   $("#runBody").innerHTML = h;
-  $("#runEdit").onclick = () => { $("#runDlg").close(); openLog(l); };
-  $("#runDlg").showModal();
+  $("#runEdit").onclick = () => { closeRun(); openLog(l); };
+  $("#runDlg").showModal(); $("#runDlg").scrollTop = 0;
+  history.pushState({run:1}, "");   // il tasto «indietro» di Android chiude il dettaglio
 }
-$("#runBody").addEventListener("click", e => {   // tocco sul grafico → linea verticale + valori in quel punto
-  const svg = e.target.closest("svg"), card = e.target.closest("[data-chart]"); if(!svg || !card || !runCtx) return;
+function closeRun(){ if($("#runDlg").open){ $("#runDlg").close(); if(history.state?.run) history.back(); } }
+$("#runBack").onclick = closeRun;
+window.addEventListener("popstate", () => { if($("#runDlg").open) $("#runDlg").close(); });
+function runPointer(e){   // tocco o trascinamento sul grafico → linea verticale + valori in quel punto
+  const svg = e.target.closest("#runBody svg"); if(!svg || !runCtx) return;
   const box = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal, x = (e.clientX-box.left)/box.width*vb.width;
   const l = +svg.dataset.l, iw = +svg.dataset.iw, xmax = +svg.dataset.xmax, dist = Math.max(0,Math.min(1,(x-l)/iw))*xmax;
   const tr = runCtx.tr; let i = 0; while(i < tr.d.length-1 && tr.d[i] < dist) i++;
-  $("#runBody").querySelectorAll(".cross").forEach(c => { c.setAttribute("x1", l + tr.d[i]/xmax*iw); c.setAttribute("x2", l + tr.d[i]/xmax*iw); c.setAttribute("opacity",".6"); });
-  const txt = `km ${(tr.d[i]/1000).toFixed(2)} · ${fmtDur(tr.t[i])} · passo ${fmtPace(runCtx.pace[i])}${tr.hr?.[i]?` · FC ${tr.hr[i]}`:""}${tr.alt?.[i]!=null?` · ${Math.round(tr.alt[i])} m`:""}`;
+  const cx = l + tr.d[i]/xmax*iw;
+  $("#runBody").querySelectorAll("svg").forEach(sv => {
+    const c = sv.querySelector(".cross"), d = sv.querySelector(".dot"); if(!c) return;
+    c.setAttribute("x1",cx); c.setAttribute("x2",cx); c.setAttribute("opacity",".55");
+    const id = sv.closest("[data-chart]").dataset.chart, v = id==="pace" ? runCtx.pace[i] : id==="hr" ? tr.hr?.[i] : tr.alt?.[i];
+    if(v==null){ d.setAttribute("opacity","0"); return; }
+    const lo = +sv.dataset.lo, hi = +sv.dataset.hi, t = +sv.dataset.t, ih = +sv.dataset.ih, f = (Math.min(hi,Math.max(lo,v))-lo)/(hi-lo);
+    d.setAttribute("cx", cx); d.setAttribute("cy", sv.dataset.inv==="1" ? t+f*ih : t+ih-f*ih); d.setAttribute("opacity","1");
+  });
+  const z = tr.hr?.[i] ? zoneOf(tr.hr[i]) : null;
+  const txt = `km ${(tr.d[i]/1000).toFixed(2)} · ${fmtDur(tr.t[i])} · passo ${fmtPace(runCtx.pace[i])}${tr.hr?.[i]?` · FC ${tr.hr[i]}${z?.n?" ("+z.n+")":""}`:""}${tr.alt?.[i]!=null?` · ${Math.round(tr.alt[i])} m`:""}`;
   $("#runBody").querySelectorAll(".chart .cap").forEach(c => c.textContent = txt);
-});
+}
+$("#runBody").addEventListener("pointerdown", runPointer);
+$("#runBody").addEventListener("pointermove", e => { if(e.buttons || e.pointerType==="touch") runPointer(e); });
 
 /* ============ FORM PROGRAMMA ============ */
 const progF = $("#progForm");
