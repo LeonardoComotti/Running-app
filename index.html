@@ -71,6 +71,9 @@
   dialog{border:0;border-radius:18px;padding:0;width:min(560px,94vw);max-height:92vh;background:var(--card);color:var(--ink)}
   dialog::backdrop{background:rgba(0,0,0,.45)}
   dialog form{padding:18px}
+  #runDlg .stats{grid-template-columns:repeat(3,1fr)}
+  #runDlg .stat .v{font-size:19px}
+  #runDlg .chart{padding:12px;margin:10px 0 0}
   dialog h3{margin-bottom:12px}
   label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
   input,select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
@@ -173,6 +176,7 @@
     <div><label>Data</label><input type="date" name="date" required></div>
     <div><label>Tipo seduta</label><input name="type" list="types" placeholder="es. Facile"></div>
   </div>
+  <label>Seduta del programma</label><select name="programId"></select>
   <datalist id="types"><option>Facile</option><option>Aerobico</option><option>Lungo</option><option>Qualità</option><option>Facile + allunghi</option><option>Camminata/corsa</option></datalist>
   <div class="grid3">
     <div><label>Distanza (km)</label><input name="km" type="number" step="0.01" min="0" inputmode="decimal"></div>
@@ -192,7 +196,7 @@
   <div class="hipwarn" id="hipWarn"></div>
   <label>Terreno / meteo</label><input name="terrain" placeholder="es. pianura, asfalto, freddo">
   <label>Note</label><textarea name="notes" placeholder="Sensazioni, cosa è andato bene o male…"></textarea>
-  <input type="hidden" name="id"><input type="hidden" name="programId">
+  <input type="hidden" name="id">
   <div class="actions">
     <button class="btn primary" value="save">Salva</button>
     <button class="btn" value="cancel" formnovalidate>Annulla</button>
@@ -225,6 +229,12 @@
     <span class="sp"></span>
     <button class="btn ghost danger" value="delete" id="progDelete" formnovalidate>Elimina</button>
   </div>
+</form></dialog>
+
+<!-- Dettaglio corsa -->
+<dialog id="runDlg"><form method="dialog">
+  <div id="runBody"></div>
+  <div class="actions"><button class="btn primary" type="button" id="runEdit">Modifica</button><span class="sp"></span><button class="btn" value="close">Chiudi</button></div>
 </form></dialog>
 
 <!-- Bilancio della settimana -->
@@ -508,8 +518,8 @@ function renderProgram(){
         <div class="plan">${esc(p.plan)}</div>
         <div class="meta"><span>Durata <b>${esc(p.duration)||"–"}</b></span><span>Passo <b>${esc(p.pace)||"–"}</b></span><span>FC <b>${esc(p.hr)||"–"}</b></span></div>
         ${l?`<div class="meta" style="margin-top:6px"><span>Fatto ${dayLabel(l.date)}</span><span><b>${l.km||"–"} km</b></span><span><b>${fmtDur(totalSec(l))}</b></span>${l.km&&totalSec(l)?`<span><b>${pace(totalSec(l),l.km)}</b></span>`:""}</div>`:""}
-        <div class="actions">${l?`<button class="btn" data-editlog="${l.id}">Vedi / modifica</button>`:`<button class="btn primary" data-do="${p.id}">Registra</button>`}
-        <button class="btn ghost" data-editprog="${p.id}">Modifica seduta</button></div></div>`;
+        <div class="actions">${l?`<button class="btn" data-run="${l.id}">Vedi corsa${l.track?" 📈":""}</button>`:`<button class="btn primary" data-do="${p.id}">Registra</button>`}
+        <button class="btn ghost" data-editprog="${p.id}">Cambia il piano</button></div></div>`;
     });
     html += `<div class="sess"><button class="btn ghost" data-addprog="${k}">+ Aggiungi seduta a questa settimana</button></div></div></details>`;
   });
@@ -599,7 +609,7 @@ function renderLog(){
   list.forEach(l => {
     const sec = totalSec(l), z = zoneOf(Number(l.hrAvg));
     const hip = (l.pains||[]).length ? "Dolori: "+esc(painsText(l)) : "";
-    html += `<div class="card log" data-editlog="${l.id}"><div class="top"><b>${esc(l.type)||"Corsa"}</b><span class="muted small sp">${dayLabel(l.date)}</span>
+    html += `<div class="card log" data-run="${l.id}"><div class="top"><b>${esc(l.type)||"Corsa"}${l.track?" 📈":""}</b><span class="muted small sp">${dayLabel(l.date)}</span>
       ${painOf(l)>=3?'<span class="pill warn">dolore</span>':""}</div>
       <div class="meta" style="margin-top:4px"><span><b>${l.km||"–"} km</b></span><span><b>${fmtDur(sec)}</b></span>${l.km&&sec?`<span><b>${pace(sec,l.km)}</b></span>`:""}
       ${l.hrAvg?`<span>FC <b>${l.hrAvg}</b>${z&&z.n?" ("+z.n+")":""}</span>`:""}${l.rpe?`<span>Sforzo <b>${l.rpe}</b></span>`:""}${hip?`<span>${hip}</span>`:""}</div>
@@ -648,7 +658,7 @@ function renderOther(){
   <h2>Ripristino</h2>
   <div class="card"><div class="note">Ricarica il programma per la mezza (16 nov → 4 apr) e le date di test. Il diario delle corse non viene toccato.</div>
     <div class="actions"><button class="btn danger" id="resetProg">Ripristina programma iniziale</button></div></div>
-  <p class="small muted" style="text-align:center">Corsa · versione 7</p>`;
+  <p class="small muted" style="text-align:center">Corsa · versione 9</p>`;
   $("#exportJson").onclick = exportJson;
   $("#importJson").onclick = () => $("#importFile").click();
   $("#exportCsv").onclick = exportCsv;
@@ -786,7 +796,7 @@ $("#dayBody").addEventListener("click", e => {
   const t = e.target.closest("[data-editev],[data-editlog]"); if(!t) return;
   $("#dayDlg").close();
   if(t.dataset.editev) openEvent(S.events.find(x=>x.id===t.dataset.editev));
-  else openLog(S.log.find(x=>x.id===t.dataset.editlog));
+  else openRun(t.dataset.editlog);
 });
 
 const evF = $("#evForm");
@@ -1090,56 +1100,119 @@ function updPace(){ const sec = (+logF.min.value||0)*60 + (+logF.sec.value||0), 
   $("#paceCalc").textContent = [km&&sec ? "Passo medio: "+pace(sec,km) : "", z&&z.n&&logF.hrAvg.value ? "FC media in "+z.n : ""].filter(Boolean).join(" · "); }
 ["km","min","sec","hrAvg"].forEach(n => logF[n].addEventListener("input", updPace));
 
-/* ---- Import da file dell'orologio (Huawei Health «Esporta percorso» o Health Sync) ----
-   Legge solo il riepilogo: data, distanza, durata, FC media e massima. */
+/* ---- Import da file dell'orologio (Huawei Health «Esporta percorso», Health Sync, condivisione) ----
+   Dal file si ricavano: riepilogo (data, distanza, durata, FC), tempi per km e un tracciato
+   sottocampionato (max ~300 punti) per i grafici della corsa. Il percorso GPS non viene salvato. */
 function parseRunFile(text){
   const doc = new DOMParser().parseFromString(text, "application/xml");
-  if(doc.querySelector("parsererror")) throw new Error("File non leggibile");
-  const all = (n) => [...doc.getElementsByTagNameNS("*", n)];
+  if(doc.querySelector("parsererror")) throw new Error("File non leggibile (serve un .tcx o .gpx)");
+  const all = (root, n) => [...root.getElementsByTagNameNS("*", n)];
+  const kid = (el, n) => el ? [...el.children].find(c => c.localName===n) : null;
   const num = el => el ? parseFloat(el.textContent) : NaN;
-  let start, sec = 0, m = 0, hrs = [];
-  const laps = all("Lap");
-  if(laps.length){                                  // ---- TCX
-    start = laps[0].getAttribute("StartTime") || all("Id")[0]?.textContent;
-    laps.forEach(l => { sec += num([...l.children].find(c=>c.localName==="TotalTimeSeconds")); m += num([...l.children].find(c=>c.localName==="DistanceMeters")) || 0; });
-    all("HeartRateBpm").forEach(h => { if(h.parentElement.localName==="Trackpoint"){ const v = num(h.getElementsByTagNameNS("*","Value")[0]); if(v>0) hrs.push(v); } });
-    if(!m){ const d = all("DistanceMeters").map(num).filter(v=>!isNaN(v)); m = d.length ? Math.max(...d) : 0; }
-  } else {                                          // ---- GPX
-    const pts = all("trkpt").map(p => ({lat:+p.getAttribute("lat"), lon:+p.getAttribute("lon"),
-      t: p.getElementsByTagNameNS("*","time")[0]?.textContent, hr: num(p.getElementsByTagNameNS("*","hr")[0])}));
-    if(pts.length < 2) throw new Error("Nessun percorso nel file");
-    const rad = x => x*Math.PI/180;
-    for(let i=1;i<pts.length;i++){ const a=pts[i-1], b=pts[i];
-      const dLat=rad(b.lat-a.lat), dLon=rad(b.lon-a.lon);
-      const h = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLon/2)**2;
-      m += 2*6371000*Math.asin(Math.sqrt(h)); }
-    start = pts[0].t; const end = pts[pts.length-1].t;
-    if(start && end) sec = (new Date(end)-new Date(start))/1000;
-    hrs = pts.map(p=>p.hr).filter(v=>v>0);
+  let pts = [], lapSec = 0, lapM = 0;
+  const laps = all(doc, "Lap");
+  if(laps.length){                                    // ---- TCX
+    laps.forEach(l => { lapSec += num(kid(l,"TotalTimeSeconds")) || 0; lapM += num(kid(l,"DistanceMeters")) || 0; });
+    pts = all(doc, "Trackpoint").map(tp => ({ time: kid(tp,"Time")?.textContent, d: num(kid(tp,"DistanceMeters")),
+      hr: num(kid(kid(tp,"HeartRateBpm"),"Value")), alt: num(kid(tp,"AltitudeMeters")),
+      lat: num(kid(kid(tp,"Position"),"LatitudeDegrees")), lon: num(kid(kid(tp,"Position"),"LongitudeDegrees")) }));
+    if(!pts.length) pts = [{time: laps[0].getAttribute("StartTime") || all(doc,"Id")[0]?.textContent}];
+  } else {                                            // ---- GPX
+    pts = all(doc, "trkpt").map(p => ({ lat:+p.getAttribute("lat"), lon:+p.getAttribute("lon"),
+      time: all(p,"time")[0]?.textContent, hr: num(all(p,"hr")[0]), alt: num(all(p,"ele")[0]), d: NaN }));
+    if(pts.length < 2) throw new Error("Nel file non c'è nessun tracciato");
   }
-  if(!sec && !m) throw new Error("Nel file non ci sono dati di corsa");
-  return { date: start ? iso(new Date(start)) : null, km: m ? Math.round(m/10)/100 : null, sec: Math.round(sec)||null,
-    hrAvg: hrs.length ? Math.round(hrs.reduce((a,b)=>a+b,0)/hrs.length) : null, hrMax: hrs.length ? Math.max(...hrs) : null };
+  // distanza cumulativa: dal file se c'è, altrimenti dal GPS
+  const rad = x => x*Math.PI/180;
+  let cum = 0;
+  pts.forEach((p,i) => {
+    if(!isNaN(p.d)){ cum = p.d; return; }
+    if(i>0 && !isNaN(p.lat) && !isNaN(pts[i-1].lat)){
+      const a = pts[i-1], dLat = rad(p.lat-a.lat), dLon = rad(p.lon-a.lon);
+      const h = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat))*Math.cos(rad(p.lat))*Math.sin(dLon/2)**2;
+      cum += 2*6371000*Math.asin(Math.sqrt(h));
+    }
+    p.d = cum;
+  });
+  const t0 = pts[0].time ? new Date(pts[0].time).getTime() : NaN;
+  pts.forEach(p => p.t = p.time ? (new Date(p.time).getTime()-t0)/1000 : NaN);
+  const timed = pts.filter(p => !isNaN(p.t));
+  const totalM = lapM || (timed.length ? timed[timed.length-1].d : 0);
+  const totalS = lapSec || (timed.length ? timed[timed.length-1].t : 0);
+  if(!totalS && !totalM) throw new Error("Nel file non ci sono dati di corsa");
+  const hrs = timed.map(p=>p.hr).filter(v=>v>0);
+
+  // tempi per km (interpolati)
+  const splits = [];
+  if(timed.length > 2){
+    let k = 1, prevT = 0, prevI = 0;
+    for(let i=1;i<timed.length;i++){
+      while(timed[i].d >= k*1000){
+        const a = timed[i-1], b = timed[i], f = (k*1000-a.d)/((b.d-a.d)||1), tk = a.t + f*(b.t-a.t);
+        const hrSeg = timed.slice(prevI, i+1).map(p=>p.hr).filter(v=>v>0);
+        splits.push({km:k, sec: Math.round(tk-prevT), hr: hrSeg.length ? Math.round(hrSeg.reduce((x,y)=>x+y,0)/hrSeg.length) : null});
+        prevT = tk; prevI = i; k++;
+      }
+    }
+    const rest = totalM - (k-1)*1000;
+    if(rest > 150){ const hrSeg = timed.slice(prevI).map(p=>p.hr).filter(v=>v>0);
+      splits.push({km: Math.round(((k-1)*1000+rest)/10)/100, sec: Math.round(timed[timed.length-1].t - prevT), part: Math.round(rest), hr: hrSeg.length ? Math.round(hrSeg.reduce((x,y)=>x+y,0)/hrSeg.length) : null}); }
+  }
+  // tracciato sottocampionato per i grafici
+  let track = null;
+  if(timed.length > 10){
+    const step = Math.max(1, Math.ceil(timed.length/300)), s = timed.filter((_,i)=>i%step===0 || i===timed.length-1);
+    const r = (v, k=1) => isNaN(v) ? null : Math.round(v*k)/k;
+    track = { t: s.map(p=>Math.round(p.t)), d: s.map(p=>Math.round(p.d)), hr: s.map(p=>r(p.hr)), alt: s.map(p=>r(p.alt,10)) };
+    if(track.hr.every(v=>v==null)) delete track.hr;
+    if(track.alt.every(v=>v==null)) delete track.alt;
+  }
+  const alts = timed.map(p=>p.alt).filter(v=>!isNaN(v));
+  let gain = 0; for(let i=1;i<alts.length;i++){ const dd = alts[i]-alts[i-1]; if(dd>0) gain += dd; }
+  return { date: pts[0].time ? iso(new Date(pts[0].time)) : null, km: totalM ? Math.round(totalM/10)/100 : null, sec: Math.round(totalS)||null,
+    hrAvg: hrs.length ? Math.round(hrs.reduce((a,b)=>a+b,0)/hrs.length) : null, hrMax: hrs.length ? Math.max(...hrs) : null,
+    gain: alts.length ? Math.round(gain) : null, splits, track };
+}
+let pendingImport = null;   // dati del file in attesa di essere salvati con la corsa
+function applyImport(r){
+  pendingImport = r;
+  if(r.date){ logF.date.value = r.date; fillSessionSelect(); }
+  if(r.km) logF.km.value = r.km;
+  if(r.sec){ logF.min.value = Math.floor(r.sec/60); logF.sec.value = r.sec%60; }
+  if(r.hrAvg) logF.hrAvg.value = r.hrAvg;
+  if(r.hrMax) logF.hrMax.value = r.hrMax;
+  updPace();
+  $("#importMsg").textContent = `✓ Importati: ${r.km??"–"} km${r.splits?.length?`, ${r.splits.length} parziali`:""}${r.track?", grafici":""}. Aggiungi sforzo e dolori e salva.`;
 }
 $("#importRun").onclick = () => $("#runFile").click();
 $("#runFile").onchange = async e => {
   const f = e.target.files[0]; e.target.value = ""; if(!f) return;
-  try{
-    const r = parseRunFile(await f.text());
-    if(r.date) logF.date.value = r.date;
-    if(r.km) logF.km.value = r.km;
-    if(r.sec){ logF.min.value = Math.floor(r.sec/60); logF.sec.value = r.sec%60; }
-    if(r.hrAvg) logF.hrAvg.value = r.hrAvg;
-    if(r.hrMax) logF.hrMax.value = r.hrMax;
-    updPace(); $("#importMsg").textContent = "✓ Dati importati: controlla e aggiungi sforzo e dolori.";
-  }catch(err){ $("#importMsg").textContent = "⚠ " + (err.message || "Non riesco a leggere il file"); }
+  try{ applyImport(parseRunFile(await f.text())); }
+  catch(err){ $("#importMsg").textContent = "⚠ " + (err.message || "Non riesco a leggere il file"); }
 };
 
-function openLog(entry, prog){
-  logF.reset(); $("#importMsg").textContent = ""; const e = entry || {};
-  logF.id.value = e.id || ""; logF.programId.value = e.programId || (prog&&prog.id) || "";
-  const p = prog || S.program.find(x=>x.id===e.programId);
-  logF.date.value = e.date || today();
+/* Selettore della seduta del programma (le sedute della settimana della data scelta) */
+function fillSessionSelect(keep){
+  const sel = logF.programId, d = logF.date.value || today(), wk = sessionsOfWeek(mondayOf(d));
+  const cur = keep !== undefined ? keep : sel.value;
+  const myId = logF.id.value;
+  sel.innerHTML = `<option value="">Corsa libera (fuori programma)</option>` + wk.map(p => {
+    const taken = S.log.find(l => l.programId===p.id && l.id!==myId);
+    return `<option value="${p.id}">${esc(p.session)}${taken?" · già registrata":""}</option>`; }).join("");
+  sel.value = wk.some(p=>p.id===cur) ? cur : "";
+}
+function guessSession(date){   // prima seduta non ancora fatta di quella settimana (le facoltative per ultime)
+  const wk = sessionsOfWeek(mondayOf(date)).filter(p => !logFor(p.id));
+  return (wk.find(p=>!p.optional) || wk[0])?.id || "";
+}
+
+function openLog(entry, prog, imported){
+  logF.reset(); $("#importMsg").textContent = ""; pendingImport = null; const e = entry || {};
+  logF.id.value = e.id || "";
+  logF.date.value = e.date || (imported&&imported.date) || today();
+  const pid = entry ? (e.programId||"") : prog ? prog.id : imported ? guessSession(logF.date.value) : "";
+  fillSessionSelect(pid);
+  const p = prog || S.program.find(x=>x.id===pid);
   logF.type.value = e.type ?? (p ? p.session : "");
   ["km","min","sec","hrAvg","hrMax","terrain","notes"].forEach(k => logF[k].value = e[k] ?? "");
   setScale("rpe", e.rpe);
@@ -1147,18 +1220,108 @@ function openLog(entry, prog){
   $("#logTitle").textContent = entry ? "Modifica corsa" : "Registra corsa";
   $("#logPlan").innerHTML = p ? `<b>Previsto:</b> ${esc(p.plan)}${p.hipGated?' <span class="pill warn">solo se non hai dolori</span>':""}` : "";
   $("#logDelete").style.display = entry ? "" : "none";
-  updPace(); $("#logDlg").showModal();
+  updPace();
+  if(imported) applyImport(imported);
+  $("#logDlg").showModal();
 }
+// cambiando data o seduta si aggiornano elenco e «Previsto»
+logF.date.addEventListener("change", () => fillSessionSelect());
+logF.programId.addEventListener("change", () => {
+  const p = S.program.find(x=>x.id===logF.programId.value);
+  $("#logPlan").innerHTML = p ? `<b>Previsto:</b> ${esc(p.plan)}` : "";
+  if(p && !logF.type.value) logF.type.value = p.session;
+});
 $("#logDlg").addEventListener("close", () => {
   const v = $("#logDlg").returnValue, id = logF.id.value;
   if(v==="delete"){ if(confirm("Eliminare questa corsa?")){ S.log = S.log.filter(l=>l.id!==id); save(); render(); toast("Corsa eliminata"); } return; }
   if(v!=="save") return;
   const num = x => x==="" ? null : Number(x);
+  const old = S.log.find(l=>l.id===id);
   const e = { id: id || uid(), programId: logF.programId.value || null, date: logF.date.value, type: logF.type.value.trim(),
     km: num(logF.km.value), min: num(logF.min.value), sec: num(logF.sec.value), hrAvg: num(logF.hrAvg.value), hrMax: num(logF.hrMax.value),
+    gain: pendingImport?.gain ?? old?.gain ?? null, splits: pendingImport?.splits ?? old?.splits ?? null, track: pendingImport?.track ?? old?.track ?? null,
     rpe: scaleVal("rpe"), pains: painRows.filter(r=>r.level!=null||r.next!=null).map(r=>({part: r.base+(r.side?" "+r.side:""), level: r.level??0, next: r.next})), terrain: logF.terrain.value.trim(), notes: logF.notes.value.trim() };
+  if(!e.track) delete e.track; if(!e.splits) delete e.splits; if(e.gain==null) delete e.gain;
   const i = S.log.findIndex(l=>l.id===e.id); if(i>=0) S.log[i]=e; else S.log.push(e);
-  save(); render(); toast("Corsa salvata");
+  pendingImport = null; save(); render(); toast("Corsa salvata");
+});
+
+/* ============ DETTAGLIO CORSA (grafici dal file dell'orologio) ============ */
+function smoothPace(tr){   // passo (s/km) su una finestra di ~250 m, per togliere il rumore del GPS
+  const out = []; let j = 0;
+  for(let i=0;i<tr.d.length;i++){
+    while(j < i && tr.d[i]-tr.d[j] > 250) j++;
+    const k = Math.max(0, j-1), dd = tr.d[i]-tr.d[k], dt = tr.t[i]-tr.t[k];
+    out.push(dd > 50 ? Math.min(900, Math.max(150, dt/dd*1000)) : null);
+  }
+  return out;
+}
+const fmtPace = p => p==null ? "–" : `${Math.floor(p/60)}:${String(Math.round(p%60)).padStart(2,"0")}`;
+function lineChart({id, xs, ys, yFmt, invert, color, bands, area, title, unit, tipFn}){
+  const W = 340, H = 140, l = 34, r = 8, t = 8, b = 20, iw = W-l-r, ih = H-t-b;
+  const vals = ys.filter(v=>v!=null); if(vals.length < 2) return "";
+  const sorted = [...vals].sort((a,b)=>a-b), q = p => sorted[Math.floor(p*(sorted.length-1))];
+  let lo = q(0.02), hi = q(0.98); const pad = (hi-lo)*0.15 || 5; lo -= pad; hi += pad;
+  if(bands){ lo = Math.min(lo, bands[0].lo); }
+  const xmax = xs[xs.length-1] || 1, X = x => l + x/xmax*iw;
+  const Y = v => { const f = (Math.min(hi,Math.max(lo,v))-lo)/(hi-lo); return invert ? t + f*ih : t + ih - f*ih; };
+  let g = "";
+  if(bands) bands.forEach(z => { if(z.hi < lo || z.lo > hi) return; const y1 = Y(Math.min(hi,z.hi)), y2 = Y(Math.max(lo,z.lo));
+    g += `<rect x="${l}" y="${Math.min(y1,y2)}" width="${iw}" height="${Math.abs(y2-y1)}" fill="${z.c}" opacity=".18"/><text x="${W-r-2}" y="${Math.min(y1,y2)+10}" text-anchor="end">${z.n}</text>`; });
+  [lo+(hi-lo)*0.1, (lo+hi)/2, hi-(hi-lo)*0.1].forEach(v => g += `<line class="grid" x1="${l}" x2="${W-r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${l-4}" y="${Y(v)+3}" text-anchor="end">${yFmt(v)}</text>`);
+  const pts = xs.map((x,i)=> ys[i]==null ? null : `${X(x).toFixed(1)},${Y(ys[i]).toFixed(1)}`);
+  let path = "", open = false; pts.forEach(pt => { if(!pt){ open=false; return; } path += (open?"L":"M")+pt; open = true; });
+  if(area){ const base = t+ih; g += `<path d="M${X(xs[0])},${base}L${pts.filter(Boolean).join("L")}L${X(xs[xs.length-1])},${base}Z" fill="${color}" opacity=".25"/>`; }
+  g += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`;
+  for(let k=0;k<=Math.floor(xmax/1000);k+= xmax>12000?2:1) g += `<text x="${X(k*1000)}" y="${H-6}" text-anchor="middle">${k}</text>`;
+  g += `<line class="cross" x1="0" x2="0" y1="${t}" y2="${t+ih}" stroke="var(--ink)" stroke-width="1" opacity="0"/><rect class="hit" x="${l}" y="${t}" width="${iw}" height="${ih}" fill="transparent"/>`;
+  return `<div class="card chart" data-chart="${id}"><b>${title}</b> <span class="small muted">${unit}</span>
+    <svg viewBox="0 0 ${W} ${H}" data-xmax="${xmax}" data-l="${l}" data-iw="${iw}">${g}</svg><div class="cap">Tocca il grafico per i valori · asse: km</div></div>`;
+}
+let runCtx = null;
+function openRun(id){
+  const l = S.log.find(x=>x.id===id); if(!l) return;
+  const sec = totalSec(l), p = S.program.find(x=>x.id===l.programId), tr = l.track;
+  let h = `<div class="row"><h3 class="sp">${esc(l.type)||"Corsa"}</h3><span class="small muted">${dayLabel(l.date)}</span></div>
+    ${p?`<div class="small muted">Seduta: ${esc(p.session)} · ${esc(p.plan)}</div>`:""}
+    <div class="stats" style="margin-top:10px">
+      <div class="stat"><div class="v">${l.km??"–"}</div><div class="l">km</div></div>
+      <div class="stat"><div class="v">${fmtDur(sec)}</div><div class="l">tempo</div></div>
+      <div class="stat"><div class="v">${l.km&&sec?pace(sec,l.km).replace("/km",""):"–"}</div><div class="l">min/km</div></div>
+      <div class="stat"><div class="v">${l.hrAvg??"–"}</div><div class="l">FC media${l.hrAvg&&zoneOf(l.hrAvg)?.n?" · "+zoneOf(l.hrAvg).n:""}</div></div>
+      <div class="stat"><div class="v">${l.hrMax??"–"}</div><div class="l">FC max</div></div>
+      <div class="stat"><div class="v">${l.gain!=null?l.gain+" m":(l.rpe??"–")}</div><div class="l">${l.gain!=null?"dislivello +":"sforzo"}</div></div>
+    </div>`;
+  if((l.pains||[]).length) h += `<div class="note">Dolori: ${esc(painsText(l))}</div>`;
+  if(l.notes) h += `<div class="note">${esc(l.notes)}</div>`;
+  if(tr){
+    runCtx = {tr, pace: smoothPace(tr)};
+    h += lineChart({id:"pace", xs:tr.d, ys:runCtx.pace, yFmt:fmtPace, invert:true, color:"var(--accent)", title:"Passo", unit:"min/km · più in alto = più veloce"});
+    if(tr.hr) h += lineChart({id:"hr", xs:tr.d, ys:tr.hr, yFmt:v=>Math.round(v), color:"#dc2626", title:"Frequenza cardiaca", unit:"bpm, con le tue zone",
+      bands: zones().map(z=>({lo:z.lo, hi:z.hi, c:z.c, n:z.n}))});
+    if(tr.alt) h += lineChart({id:"alt", xs:tr.d, ys:tr.alt, yFmt:v=>Math.round(v), color:"#78716c", area:true, title:"Altimetria", unit:"m"});
+  }
+  if(l.splits?.length){
+    const best = Math.min(...l.splits.filter(s=>!s.part).map(s=>s.sec)), worst = Math.max(...l.splits.filter(s=>!s.part).map(s=>s.sec));
+    h += `<div class="card"><b>Parziali per km</b><div style="margin-top:8px">${l.splits.map(s => {
+      const pk = s.part ? s.sec/s.part*1000 : s.sec, w = worst>best ? 35 + 65*(1-(pk-best)/(worst-best||1)) : 100;
+      return `<div class="row small" style="margin:3px 0"><span style="width:38px">${s.part?(s.km+""):"km "+s.km}</span>
+        <span class="sp"><span style="display:block;height:14px;border-radius:4px;width:${Math.max(10,Math.min(100,w))}%;background:${pk===best&&!s.part?"var(--accent)":"var(--accent-soft)"}"></span></span>
+        <b style="width:44px;text-align:right">${fmtPace(pk)}</b><span class="muted" style="width:52px;text-align:right">${s.hr?s.hr+" bpm":""}</span></div>`; }).join("")}</div></div>`;
+  }
+  if(!tr && !l.splits) h += `<div class="card note">Per vedere i grafici di passo, FC e altimetria importa il file dell'orologio: «Modifica» → «📂 Compila da file dell'orologio», oppure condividi il file da Huawei Health all'app Corsa.</div>`;
+  $("#runBody").innerHTML = h;
+  $("#runEdit").onclick = () => { $("#runDlg").close(); openLog(l); };
+  $("#runDlg").showModal();
+}
+$("#runBody").addEventListener("click", e => {   // tocco sul grafico → linea verticale + valori in quel punto
+  const svg = e.target.closest("svg"), card = e.target.closest("[data-chart]"); if(!svg || !card || !runCtx) return;
+  const box = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal, x = (e.clientX-box.left)/box.width*vb.width;
+  const l = +svg.dataset.l, iw = +svg.dataset.iw, xmax = +svg.dataset.xmax, dist = Math.max(0,Math.min(1,(x-l)/iw))*xmax;
+  const tr = runCtx.tr; let i = 0; while(i < tr.d.length-1 && tr.d[i] < dist) i++;
+  $("#runBody").querySelectorAll(".cross").forEach(c => { c.setAttribute("x1", l + tr.d[i]/xmax*iw); c.setAttribute("x2", l + tr.d[i]/xmax*iw); c.setAttribute("opacity",".6"); });
+  const txt = `km ${(tr.d[i]/1000).toFixed(2)} · ${fmtDur(tr.t[i])} · passo ${fmtPace(runCtx.pace[i])}${tr.hr?.[i]?` · FC ${tr.hr[i]}`:""}${tr.alt?.[i]!=null?` · ${Math.round(tr.alt[i])} m`:""}`;
+  $("#runBody").querySelectorAll(".chart .cap").forEach(c => c.textContent = txt);
 });
 
 /* ============ FORM PROGRAMMA ============ */
@@ -1168,7 +1331,7 @@ function openProg(p, start){
   ["id","start","phase","session","plan","duration","pace","hr"].forEach(k => progF[k].value = e[k] ?? "");
   progF.optional.checked = !!e.optional; progF.hipGated.checked = !!e.hipGated;
   if(!p){ const same = S.program.find(x=>x.start===e.start); if(same) progF.phase.value = same.phase; }
-  $("#progTitle").textContent = p ? "Modifica seduta" : "Nuova seduta";
+  $("#progTitle").textContent = p ? "Cambia il piano della seduta" : "Nuova seduta";
   $("#progDelete").style.display = p ? "" : "none";
   $("#progDlg").showModal();
 }
@@ -1190,7 +1353,8 @@ $("#progDlg").addEventListener("close", () => {
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); scrollTo(0,0); });
 $("#fab").onclick = () => openLog(null, null);
 $("#view").addEventListener("click", e => {
-  const t = e.target.closest("[data-do],[data-editlog],[data-editprog],[data-addprog],[data-day],[data-cal],[data-newev],[data-editev],[data-week],[data-backup],[data-goto]"); if(!t) return;
+  const t = e.target.closest("[data-do],[data-editlog],[data-editprog],[data-addprog],[data-day],[data-cal],[data-newev],[data-editev],[data-week],[data-backup],[data-goto],[data-run]"); if(!t) return;
+  if(t.dataset.run){ openRun(t.dataset.run); return; }
   if(t.dataset.week){ e.preventDefault(); openWeek(t.dataset.week); return; }
   if(t.dataset.goto){ document.getElementById("blk-"+t.dataset.goto)?.scrollIntoView({behavior:"smooth", block:"start"}); return; }
   if(t.dataset.backup!==undefined){ exportJson(); return; }
@@ -1205,6 +1369,24 @@ $("#view").addEventListener("click", e => {
 });
 
 load(); render();
+// Arrivo da «Condividi» di un'altra app: importo il file e propongo la seduta giusta
+(async () => {
+  if(!location.search.includes("shared=1")) return;
+  history.replaceState(null, "", location.pathname);
+  try{
+    const c = await caches.open("corsa-share"), res = await c.match("shared-file");
+    if(!res) return toast("Non ho ricevuto nessun file");
+    await c.delete("shared-file");
+    const text = await res.text();
+    let r; try{ r = parseRunFile(text); }catch(err){ return toast(err.message || "File non riconosciuto"); }
+    // c'è già una corsa registrata quel giorno senza grafici? la completo, altrimenti ne creo una nuova
+    const same = S.log.filter(l => l.date===r.date);
+    const target = same.find(l=>!l.track) || null;
+    tab = "programma"; render();
+    openLog(target, null, r);
+    $("#importMsg").textContent += target ? " Collegato alla corsa che avevi già registrato quel giorno." : " Controlla la seduta proposta.";
+  }catch(err){ toast("Errore nell'importazione"); }
+})();
 if("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
 </body>
