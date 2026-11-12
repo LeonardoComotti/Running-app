@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<title>Corsa</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<style>
+  :root{
+    --bg:#f4f6f5; --card:#fff; --ink:#1b2422; --muted:#66736f; --line:#e2e7e5;
+    --accent:#0f766e; --accent-soft:#e0f2ef; --warn:#b45309; --warn-soft:#fef3c7;
+    --done:#15803d; --done-soft:#dcfce7; --danger:#b91c1c;
+    --z1:#93c5fd; --z2:#4ade80; --z3:#facc15; --z4:#fb923c; --z5:#f87171;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1514; --card:#18211f; --ink:#e6ecea; --muted:#94a3a0; --line:#2a3633;
+      --accent:#2dd4bf; --accent-soft:#11302c; --warn:#fbbf24; --warn-soft:#3a2c0b;
+      --done:#4ade80; --done-soft:#123020; }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(env(safe-area-inset-top) + 14px) 18px 10px;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:22px;letter-spacing:-.01em}
+  header p{margin:2px 0 0;color:var(--muted);font-size:14px}
+  main{padding:14px 14px 110px;max-width:640px;margin:0 auto}
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:6;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  nav button{flex:1;border:0;background:none;color:var(--muted);padding:9px 0 10px;font:inherit;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px}
+  nav button svg{width:24px;height:24px}
+  nav button.on{color:var(--accent);font-weight:600}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  .row{display:flex;align-items:center;gap:10px}
+  .sp{flex:1}
+  .muted{color:var(--muted)}
+  .small{font-size:13px}
+  h2{font-size:17px;margin:20px 4px 10px}
+  h3{font-size:16px;margin:0}
+  .pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.done{background:var(--done-soft);color:var(--done)}
+  .week{margin-bottom:12px}
+  .week > summary{list-style:none;cursor:pointer;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:14px;display:flex;align-items:center;gap:10px}
+  .week > summary::-webkit-details-marker{display:none}
+  .week[open] > summary{border-radius:14px 14px 0 0}
+  .week.now > summary{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .week .body{border:1px solid var(--line);border-top:0;border-radius:0 0 14px 14px;background:var(--card)}
+  .sess{padding:12px 14px;border-top:1px solid var(--line)}
+  .sess:first-child{border-top:0}
+  .sess .plan{margin:4px 0 6px}
+  .meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--muted)}
+  .meta b{color:var(--ink);font-weight:600}
+  .actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  button.btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:8px 14px;font:inherit;font-size:14px;font-weight:600}
+  button.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  @media (prefers-color-scheme: dark){button.btn.primary{color:#062b27}}
+  button.btn.ghost{border-color:transparent;background:none;color:var(--muted);padding:8px 6px}
+  button.btn.danger{color:var(--danger)}
+  .fab{position:fixed;right:18px;bottom:calc(76px + env(safe-area-inset-bottom));z-index:6;width:58px;height:58px;border-radius:18px;border:0;background:var(--accent);color:#fff;font-size:30px;line-height:1;box-shadow:0 6px 18px rgba(0,0,0,.2)}
+  @media (prefers-color-scheme: dark){.fab{color:#062b27}}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}
+  .stat .v{font-size:22px;font-weight:700}
+  .stat .l{font-size:12px;color:var(--muted)}
+  .log .top{display:flex;align-items:baseline;gap:8px}
+  .zone{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+  .zone:first-of-type{border-top:0}
+  .zone .sw{width:12px;align-self:stretch;border-radius:4px}
+  .zone .n{font-weight:700;width:28px}
+  .zone .r{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+  dialog{border:0;border-radius:18px;padding:0;width:min(560px,94vw);max-height:92vh;background:var(--card);color:var(--ink)}
+  dialog::backdrop{background:rgba(0,0,0,.45)}
+  dialog form{padding:18px}
+  dialog h3{margin-bottom:12px}
+  label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+  input,select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  textarea{min-height:64px;resize:vertical}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px}
+  .calc{margin-top:8px;font-size:14px;color:var(--accent);font-weight:600;min-height:20px}
+  .scale{display:flex;gap:4px}
+  .scale button{flex:1;padding:8px 0;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:8px;font:inherit;font-size:13px}
+  .scale button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chips button{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:99px;padding:6px 12px;font:inherit;font-size:13px}
+  .chips button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .chips button.none.on{background:var(--done);border-color:var(--done)}
+  .painrow{margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px}
+  .painrow .row{margin-bottom:6px}
+  .painrow .side button{padding:3px 10px;font-size:12px}
+  .painrow .scale button{font-size:12px;padding:6px 0}
+  .sub{font-size:12px;color:var(--muted);margin:6px 0 3px}
+  .feel{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .feel button{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:12px;padding:12px 8px;font:inherit;font-size:14px;font-weight:600}
+  .feel button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .feel button small{display:block;font-weight:400;font-size:12px;opacity:.8}
+  .hipwarn{margin-top:8px;padding:10px;border-radius:10px;background:var(--warn-soft);color:var(--warn);font-size:14px;display:none}
+  .empty{text-align:center;color:var(--muted);padding:30px 10px}
+  .toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
+  .toast.show{opacity:1}
+  .note{font-size:14px;color:var(--muted);margin:6px 0}
+  /* calendario */
+  .calhead{display:flex;align-items:center;gap:8px;margin:4px 0 10px}
+  .calhead h3{flex:1;text-align:center;text-transform:capitalize}
+  .cal{display:grid;grid-template-columns:repeat(7,1fr) 40px;gap:3px}
+  .cal .dh{font-size:11px;color:var(--muted);text-align:center;padding:2px 0}
+  .cal .d{min-height:52px;border-radius:8px;padding:3px;font-size:12px;background:var(--card);border:1px solid var(--line);position:relative;display:flex;flex-direction:column;gap:2px;cursor:pointer}
+  .cal .d.out{opacity:.4}
+  .cal .d.today{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .cal .d .num{font-weight:600}
+  .cal .d .dots{display:flex;gap:2px;flex-wrap:wrap}
+  .cal .dot{width:7px;height:7px;border-radius:50%;background:var(--done)}
+  .cal .ev{font-size:10px;line-height:1.15;border-radius:4px;padding:1px 3px;color:#fff;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .ev-gara{background:#dc2626}.ev-test{background:#d97706}.ev-altro{background:#2563eb}
+  .cal .wk{font-size:10px;text-align:center;display:flex;flex-direction:column;justify-content:center;border-radius:8px;color:var(--muted)}
+  .ph-Costruzione,.ph-Base,.ph-Sviluppo,.ph-Specifico{background:var(--accent-soft)} .ph-Test,.ph-Gara,.ph-Affinamento{background:#fee2e2} .ph-Scarico{background:#dbeafe} .ph-Recupero,.ph-Ripresa{background:var(--warn-soft)}
+  @media (prefers-color-scheme: dark){.ph-Scarico{background:#16263f}.ph-Test,.ph-Gara,.ph-Affinamento{background:#3b1717}}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--muted);margin-top:10px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+  .count{font-size:26px;font-weight:700;line-height:1.1}
+  /* coach */
+  .prop{border-left:4px solid var(--accent)}
+  .prop.warn{border-left-color:var(--warn)}
+  .prop.stop{border-left-color:var(--danger)}
+  .prop.good{border-left-color:var(--done)}
+  .prop .why{font-size:14px;color:var(--muted);margin:4px 0 0}
+  .prop .what{font-size:14px;margin:8px 0 0;padding:8px 10px;background:var(--bg);border-radius:8px}
+  nav .badge{position:absolute;top:4px;margin-left:18px;background:var(--danger);color:#fff;border-radius:99px;font-size:10px;padding:0 5px;line-height:16px}
+  nav button{position:relative}
+  ul.tips{margin:6px 0 0;padding-left:18px;font-size:14px}
+  ul.tips li{margin:4px 0}
+</style>
+</head>
+<body>
+<header><h1 id="title">Programma</h1><p id="subtitle"></p></header>
+<main id="view"></main>
+<button class="fab" id="fab" aria-label="Registra corsa">+</button>
+<nav>
+  <button data-tab="programma" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Programma</button>
+  <button data-tab="diario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h11l3 3v13H5z"/><path d="M8 10h8M8 14h8M8 18h5"/></svg>Diario</button>
+  <button data-tab="calendario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M7 13h2M11 13h2M15 13h2M7 17h2M11 17h2"/></svg>Calendario</button>
+  <button data-tab="coach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.5 5 5.5.8-4 3.9.9 5.5L12 15.6 7.1 18.2l.9-5.5-4-3.9 5.5-.8z"/></svg>Coach<span class="badge" id="coachBadge" hidden></span></button>
+  <button data-tab="altro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Altro</button>
+</nav>
+
+<!-- Registra / modifica corsa -->
+<dialog id="logDlg"><form method="dialog" id="logForm">
+  <h3 id="logTitle">Registra corsa</h3>
+  <div id="logPlan" class="note"></div>
+  <div class="grid2">
+    <div><label>Data</label><input type="date" name="date" required></div>
+    <div><label>Tipo seduta</label><input name="type" list="types" placeholder="es. Facile"></div>
+  </div>
+  <datalist id="types"><option>Facile</option><option>Aerobico</option><option>Lungo</option><option>Qualità</option><option>Facile + allunghi</option><option>Camminata/corsa</option></datalist>
+  <div class="grid3">
+    <div><label>Distanza (km)</label><input name="km" type="number" step="0.01" min="0" inputmode="decimal"></div>
+    <div><label>Durata (min)</label><input name="min" type="number" step="1" min="0" inputmode="numeric"></div>
+    <div><label>+ secondi</label><input name="sec" type="number" step="1" min="0" max="59" inputmode="numeric"></div>
+  </div>
+  <div class="calc" id="paceCalc"></div>
+  <div class="grid2">
+    <div><label>FC media</label><input name="hrAvg" type="number" min="40" max="230" inputmode="numeric"></div>
+    <div><label>FC max</label><input name="hrMax" type="number" min="40" max="230" inputmode="numeric"></div>
+  </div>
+  <label>Sforzo percepito (1 = facilissimo, 10 = massimo)</label>
+  <div class="scale" data-scale="rpe" data-from="1"></div>
+  <label>Dolori a fine allenamento</label>
+  <div class="chips" id="painChips"></div>
+  <div id="painRows"></div>
+  <div class="hipwarn" id="hipWarn"></div>
+  <label>Terreno / meteo</label><input name="terrain" placeholder="es. pianura, asfalto, freddo">
+  <label>Note</label><textarea name="notes" placeholder="Sensazioni, cosa è andato bene o male…"></textarea>
+  <input type="hidden" name="id"><input type="hidden" name="programId">
+  <div class="actions">
+    <button class="btn primary" value="save">Salva</button>
+    <button class="btn" value="cancel" formnovalidate>Annulla</button>
+    <span class="sp"></span>
+    <button class="btn ghost danger" value="delete" id="logDelete" formnovalidate>Elimina</button>
+  </div>
+</form></dialog>
+
+<!-- Modifica seduta programma -->
+<dialog id="progDlg"><form method="dialog" id="progForm">
+  <h3 id="progTitle">Seduta del programma</h3>
+  <div class="grid2">
+    <div><label>Lunedì della settimana</label><input type="date" name="start" required></div>
+    <div><label>Fase</label><input name="phase" list="phases"></div>
+  </div>
+  <datalist id="phases"><option>Recupero</option><option>Ripresa</option><option>Costruzione</option><option>Scarico</option></datalist>
+  <label>Nome seduta</label><input name="session" required placeholder="es. Lungo">
+  <label>Allenamento previsto</label><textarea name="plan"></textarea>
+  <div class="grid3">
+    <div><label>Durata</label><input name="duration"></div>
+    <div><label>Passo</label><input name="pace"></div>
+    <div><label>FC</label><input name="hr"></div>
+  </div>
+  <label><input type="checkbox" name="optional" style="width:auto"> Facoltativa</label>
+  <label><input type="checkbox" name="hipGated" style="width:auto"> Solo se non ci sono dolori (*)</label>
+  <input type="hidden" name="id">
+  <div class="actions">
+    <button class="btn primary" value="save">Salva</button>
+    <button class="btn" value="cancel" formnovalidate>Annulla</button>
+    <span class="sp"></span>
+    <button class="btn ghost danger" value="delete" id="progDelete" formnovalidate>Elimina</button>
+  </div>
+</form></dialog>
+
+<!-- Bilancio della settimana -->
+<dialog id="weekDlg"><form method="dialog" id="weekForm">
+  <h3 id="weekTitle">Com'è andata la settimana?</h3>
+  <div class="note" id="weekSummary"></div>
+  <div class="feel" id="feelBtns">
+    <button type="button" data-feel="leggera">Troppo leggera<small>avevo energie in più</small></button>
+    <button type="button" data-feel="giusta">Giusta<small>stanco il giusto</small></button>
+    <button type="button" data-feel="pesante">Un po' pesante<small>ho faticato a recuperare</small></button>
+    <button type="button" data-feel="troppo">Troppo pesante<small>gambe vuote, sonno, svogliato</small></button>
+  </div>
+  <label>Note (sonno, lavoro, stress, sensazioni…)</label>
+  <textarea name="note" placeholder="Facoltativo, ma aiuta il coach"></textarea>
+  <input type="hidden" name="start">
+  <div class="actions"><button class="btn primary" value="save">Salva</button><button class="btn" value="cancel" formnovalidate>Annulla</button></div>
+</form></dialog>
+
+<!-- Evento (gara / test) -->
+<dialog id="evDlg"><form method="dialog" id="evForm">
+  <h3 id="evTitle">Nuovo evento</h3>
+  <div class="grid2">
+    <div><label>Data</label><input type="date" name="date" required></div>
+    <div><label>Tipo</label><select name="kind"><option value="gara">Gara</option><option value="test">Test</option><option value="altro">Altro</option></select></div>
+  </div>
+  <label>Nome</label><input name="title" required placeholder="es. 10 km di Lugano">
+  <label>Note (distanza, obiettivo…)</label><textarea name="notes"></textarea>
+  <input type="hidden" name="id">
+  <div class="actions">
+    <button class="btn primary" value="save">Salva</button>
+    <button class="btn" value="cancel" formnovalidate>Annulla</button>
+    <span class="sp"></span>
+    <button class="btn ghost danger" value="delete" id="evDelete" formnovalidate>Elimina</button>
+  </div>
+</form></dialog>
+
+<!-- Giorno del calendario -->
+<dialog id="dayDlg"><form method="dialog">
+  <h3 id="dayTitle"></h3>
+  <div id="dayBody"></div>
+  <div class="actions"><button class="btn primary" type="button" id="dayAddEv">+ Evento</button><button class="btn" type="button" id="dayAddRun">+ Corsa</button><span class="sp"></span><button class="btn" value="close">Chiudi</button></div>
+</form></dialog>
+
+<input type="file" id="importFile" accept=".json,application/json" hidden>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ PROGRAMMA: MEZZA MARATONA IN 1h45 — gara 4 aprile 2027 ============
+   Ritmi di partenza (10 km attuale ~48′). Si ricalibrano dopo il test 5 km di gennaio.
+   Facile 5:50–6:20 · Medio 5:15–5:30 · Ritmo mezza (RM) 4:55–5:00 · Soglia 4:40–4:50 · Ripetute 1 km 4:20–4:30
+   3 uscite = qualità + facile + lungo. Settimana da 2: qualità + lungo. 4ª uscita: solo facile 30–40′. */
+const R = {F:"5:50–6:20/km", M:"5:15–5:30/km", RM:"4:55–5:00/km", S:"4:40–4:50/km", V:"4:20–4:30/km"};
+// Blocco base (fino al test del 10 gennaio): ritmi 10″/km più lenti, per ripartire con margine.
+const RB = {F:"6:00–6:30/km", M:"5:25–5:40/km", RM:"5:05–5:10/km", S:"4:50–5:00/km", V:"4:30–4:40/km"};
+const BASE_END = "2027-01-11";
+const RS = "15′ riscaldamento facile + ", DF = " + 10′ defaticamento";
+const SEED_PROGRAM = [
+ // --- Settimana attuale: rientro dopo l'anca
+ ["2026-11-09","Recupero","Facile 1","25–30 min molto facili","25–30 min",R.F,"Z1–Z2",0,0],
+ ["2026-11-09","Recupero","Facile 2","30 min molto facili; solo se la prima è andata bene","30 min",R.F,"Z1–Z2",1,0],
+ // --- BLOCCO 1: base aerobica (16 nov – 10 gen)
+ ["2026-11-16","Base","Qualità","40 min facili + 6 × 20″ allunghi rilassati (rec. camminando)","40–45 min",RB.F+"; allunghi sciolti","Z2",0,1],
+ ["2026-11-16","Base","Facile","35 min facili","35 min",RB.F,"Z2",0,0],
+ ["2026-11-16","Base","Lungo","55 min facili","55 min",RB.F,"Z2",0,0],
+ ["2026-11-23","Base","Qualità",RS+"3 × 6′ a soglia, rec. 2′ jogging"+DF,"~50 min","Soglia "+RB.S+" (un filo più lenta all'inizio va bene)","Passo/sforzo",0,1],
+ ["2026-11-23","Base","Facile","40 min facili + 4 × 20″ allunghi","40 min",RB.F,"Z2",0,0],
+ ["2026-11-23","Base","Lungo","65 min facili","65 min",RB.F,"Z2",0,0],
+ ["2026-11-30","Base","Qualità",RS+"6 × 3′ veloci, rec. 2′ jogging"+DF,"~50 min","4:40–4:50/km","Passo/sforzo",0,1],
+ ["2026-11-30","Base","Facile","40 min facili","40 min",RB.F,"Z2",0,0],
+ ["2026-11-30","Base","Lungo","75 min facili","75 min",RB.F,"Z2",0,0],
+ ["2026-12-07","Scarico","Facile + allunghi","35 min facili + 6 × 20″ allunghi","35 min",RB.F,"Z2",0,1],
+ ["2026-12-07","Scarico","Facile","35 min facili","35 min",RB.F,"Z2",0,0],
+ ["2026-12-07","Scarico","Lungo","60 min facili","60 min",RB.F,"Z2",0,0],
+ ["2026-12-14","Base","Qualità",RS+"3 × 8′ a soglia, rec. 2′ jogging"+DF,"~55 min","Soglia "+RB.S,"Passo/sforzo",0,1],
+ ["2026-12-14","Base","Facile","45 min facili","45 min",RB.F,"Z2",0,0],
+ ["2026-12-14","Base","Lungo","80 min facili","80 min",RB.F,"Z2",0,0],
+ ["2026-12-21","Base","Qualità",RS+"5 × 1000 m, rec. 2′ jogging"+DF,"~55 min","Ripetute "+RB.V,"Passo/sforzo",0,1],
+ ["2026-12-21","Base","Facile","45 min facili + 6 × 20″ allunghi","45 min",RB.F,"Z2",0,0],
+ ["2026-12-21","Base","Lungo","85 min: facile, ultimi 15′ a ritmo medio","85 min",RB.F+"; finale "+RB.M,"Z2 → Z3 nel finale",0,0],
+ ["2026-12-28","Scarico","Facile + allunghi","40 min facili + 6 × 20″ allunghi","40 min",RB.F,"Z2",0,1],
+ ["2026-12-28","Scarico","Facile","35 min facili","35 min",RB.F,"Z2",0,0],
+ ["2026-12-28","Scarico","Lungo","65 min facili","65 min",RB.F,"Z2",0,0],
+ ["2027-01-04","Test","Test 5 km","15′ riscaldamento + 4 allunghi, poi 5 km al massimo regolare"+DF+". Annota tempo, FC media e FC max.","~55 min","Parti a ~4:25/km, chiudi se ne hai","Annota FC max",0,1],
+ ["2027-01-04","Test","Facile","40 min facili","40 min",RB.F,"Z2",0,0],
+ ["2027-01-04","Test","Lungo","80 min facili","80 min",RB.F,"Z2",0,0],
+ // --- BLOCCO 2: sviluppo (11 gen – 7 feb)
+ ["2027-01-11","Sviluppo","Qualità",RS+"2 × 12′ a soglia, rec. 3′ jogging"+DF,"~55 min","Soglia (ricalibrata dal test)","Passo/sforzo",0,1],
+ ["2027-01-11","Sviluppo","Facile","45 min: facile, ultimi 10′ a ritmo medio","45 min",R.F+"; finale "+R.M,"Z2 → Z3",0,0],
+ ["2027-01-11","Sviluppo","Lungo","90 min facili","90 min",R.F,"Z2",0,0],
+ ["2027-01-18","Sviluppo","Qualità",RS+"6 × 1000 m, rec. 90″ jogging"+DF,"~60 min","Ripetute "+R.V,"Passo/sforzo",0,1],
+ ["2027-01-18","Sviluppo","Facile","45 min facili + 6 × 20″ allunghi","45 min",R.F,"Z2",0,0],
+ ["2027-01-18","Sviluppo","Lungo","95 min: facile, ultimi 20′ a ritmo medio","95 min",R.F+"; finale "+R.M,"Z2 → Z3 nel finale",0,0],
+ ["2027-01-25","Sviluppo","Qualità",RS+"3 × 10′ a soglia, rec. 2′ jogging"+DF,"~60 min","Soglia","Passo/sforzo",0,1],
+ ["2027-01-25","Sviluppo","Facile","50 min facili","50 min",R.F,"Z2",0,0],
+ ["2027-01-25","Sviluppo","Lungo","100 min facili (~16–17 km)","100 min",R.F,"Z2",0,0],
+ ["2027-02-01","Scarico","Qualità",RS+"4 × 5′ a soglia, rec. 2′ jogging"+DF,"~45 min","Soglia","Passo/sforzo",0,1],
+ ["2027-02-01","Scarico","Facile","40 min facili","40 min",R.F,"Z2",0,0],
+ ["2027-02-01","Scarico","Lungo","70 min facili","70 min",R.F,"Z2",0,0],
+ // --- BLOCCO 3: specifico mezza (8 feb – 14 mar)
+ ["2027-02-08","Specifico","Qualità",RS+"3 × 3 km a ritmo mezza, rec. 3′ jogging"+DF,"~70 min","RM "+R.RM,"Z3–Z4",0,1],
+ ["2027-02-08","Specifico","Facile","45 min facili + 6 × 20″ allunghi","45 min",R.F,"Z2",0,0],
+ ["2027-02-08","Specifico","Lungo","105 min facili (~17–18 km)","105 min",R.F,"Z2",0,0],
+ ["2027-02-15","Specifico","Qualità",RS+"4 × 1600 m, rec. 2′ jogging"+DF,"~60 min","4:25–4:35/km","Passo/sforzo",0,1],
+ ["2027-02-15","Specifico","Facile","50 min facili","50 min",R.F,"Z2",0,0],
+ ["2027-02-15","Specifico","Lungo","18 km: 12 facili + 6 a ritmo mezza","~100 min",R.F+" → RM "+R.RM,"Z2 → Z3/Z4",0,0],
+ ["2027-02-22","Specifico","Qualità",RS+"2 × 5 km a ritmo mezza, rec. 4′ jogging"+DF,"~75 min","RM "+R.RM,"Z3–Z4",0,1],
+ ["2027-02-22","Specifico","Facile","45 min facili","45 min",R.F,"Z2",0,0],
+ ["2027-02-22","Specifico","Lungo","110 min facili (~19 km)","110 min",R.F,"Z2",0,0],
+ ["2027-03-01","Test","Facile + allunghi","35 min facili + 4 × 20″ allunghi (martedì/mercoledì)","35 min",R.F,"Z2",0,0],
+ ["2027-03-01","Test","Pre-gara","25 min facili + 3 allunghi (venerdì)","25 min",R.F,"Z2",0,0],
+ ["2027-03-01","Test","Gara test 10 km","10 km in gara o da solo in piano: obiettivo sotto 45′. Riscaldamento 15′ + 3 allunghi.","~70 min","4:30/km regolari, chiudi forte","Annota FC media/max",0,1],
+ ["2027-03-08","Specifico","Qualità",RS+"4 × 2 km a soglia, rec. 2′ jogging"+DF,"~65 min","4:35–4:45/km","Passo/sforzo",0,1],
+ ["2027-03-08","Specifico","Facile","45 min facili","45 min",R.F,"Z2",0,0],
+ ["2027-03-08","Specifico","Lungo","19–20 km: facile, ultimi 8 km a ritmo mezza","~110 min",R.F+" → RM "+R.RM,"Z2 → Z3/Z4",0,0],
+ // --- BLOCCO 4: picco e affinamento (15 mar – 4 apr)
+ ["2027-03-15","Specifico","Qualità",RS+"10 km continui a ritmo mezza"+DF,"~75 min","RM "+R.RM,"Z3–Z4",0,1],
+ ["2027-03-15","Specifico","Facile","50 min facili","50 min",R.F,"Z2",0,0],
+ ["2027-03-15","Specifico","Lungo","100 min facili (~17–18 km)","100 min",R.F,"Z2",0,0],
+ ["2027-03-22","Affinamento","Qualità",RS+"3 × 2 km a ritmo mezza, rec. 2′ jogging"+DF,"~55 min","RM "+R.RM,"Z3–Z4",0,1],
+ ["2027-03-22","Affinamento","Facile","40 min facili + 6 × 20″ allunghi","40 min",R.F,"Z2",0,0],
+ ["2027-03-22","Affinamento","Lungo","70 min facili","70 min",R.F,"Z2",0,0],
+ ["2027-03-29","Gara","Qualità corta",RS+"3 × 1 km a ritmo mezza, rec. 2′"+DF+" (martedì)","~40 min","RM "+R.RM,"Z3–Z4",0,0],
+ ["2027-03-29","Gara","Pre-gara","25 min facili + 3 allunghi (venerdì o sabato)","25 min",R.F,"Z2",0,0],
+ ["2027-03-29","Gara","MEZZA MARATONA","Gara! Primi 5 km a 5:00–5:05, poi 4:55–4:58; dal 18° km dai quello che resta. Obiettivo sotto 1h45.","1h45",R.RM,"Non guardarla nei primi km",0,0],
+].map((r,i)=>({id:"p"+(i+1),start:r[0],phase:r[1],session:r[2],plan:r[3],duration:r[4],pace:r[5],hr:r[6],optional:!!r[7],hipGated:!!r[8]}));
+window.R_MAIN = R;
+const SEED_EVENTS = [
+  {id:"e1", date:"2027-01-10", kind:"test", title:"Test 5 km", notes:"Ricalibra i ritmi"},
+  {id:"e2", date:"2027-03-07", kind:"test", title:"10 km sotto 45′", notes:"Gara test o prova in piano"},
+  {id:"e3", date:"2027-04-04", kind:"gara", title:"Mezza maratona (da scegliere)", notes:"Obiettivo sotto 1h45 · cambia data quando ti iscrivi"},
+];
+
+const DEFAULT_STATE = {version:2, program:SEED_PROGRAM, events:SEED_EVENTS, log:[], settings:{hrMax:199, hrRest:57}};
+const KEY = "corsa-app-v1";
+
+/* ============ SALVATAGGIO ============ */
+let S;
+function load(){
+  try{ S = JSON.parse(localStorage.getItem(KEY)); }catch(e){ S = null; }
+  if(!S || !S.program){ S = structuredClone(DEFAULT_STATE); save(); }
+  migrate();
+}
+function migrate(){
+  S.settings ??= {hrMax:199, hrRest:57};
+  S.events ??= [];      // gare, test, date importanti
+  S.dismissed ??= {};   // proposte del coach già accettate/scartate
+  S.coachLog ??= [];    // storico delle modifiche accettate
+  S.weekly ??= {};      // bilancio settimanale: { "2026-11-16": {feel, note} }
+  // vecchio formato "anca durante / giorno dopo" → elenco dolori
+  S.log.forEach(l => {
+    if(!l.pains){ l.pains = (l.hipDuring!=null && l.hipDuring!=="") ? [{part:"Anca", level:+l.hipDuring, next: l.hipAfter==null||l.hipAfter===""?null:+l.hipAfter}] : []; }
+    delete l.hipDuring; delete l.hipAfter;
+  });
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(S)); }
+  catch(e){ toast("Errore nel salvataggio: fai un backup!"); }
+}
+if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+
+/* ============ UTILITÀ ============ */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+const MESI = ["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"];
+const GIORNI = ["dom","lun","mar","mer","gio","ven","sab"];
+function parseD(s){ const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); }
+function iso(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function today(){ return iso(new Date()); }
+function addDays(s,n){ const d = parseD(s); d.setDate(d.getDate()+n); return iso(d); }
+function mondayOf(s){ const d = parseD(s); const wd = (d.getDay()+6)%7; d.setDate(d.getDate()-wd); return iso(d); }
+function weekLabel(start){
+  const a = parseD(start), b = parseD(addDays(start,6));
+  return a.getMonth()===b.getMonth() ? `${a.getDate()}–${b.getDate()} ${MESI[b.getMonth()]}` : `${a.getDate()} ${MESI[a.getMonth()]} – ${b.getDate()} ${MESI[b.getMonth()]}`;
+}
+function dayLabel(s){ const d = parseD(s); return `${GIORNI[d.getDay()]} ${d.getDate()} ${MESI[d.getMonth()]}`; }
+function totalSec(e){ return (Number(e.min)||0)*60 + (Number(e.sec)||0); }
+function fmtDur(sec){ if(!sec) return "–"; const h=Math.floor(sec/3600), m=Math.floor(sec%3600/60), s=Math.round(sec%60);
+  return h ? `${h}h ${String(m).padStart(2,"0")}′` : (s ? `${m}′${String(s).padStart(2,"0")}″` : `${m}′`); }
+function pace(sec, km){ if(!sec || !km) return ""; const p = sec/km; let m=Math.floor(p/60), s=Math.round(p%60); if(s===60){m++;s=0;} return `${m}:${String(s).padStart(2,"0")}/km`; }
+function zones(){
+  const {hrMax, hrRest} = S.settings, r = hrMax - hrRest, b = p => Math.round(hrRest + r*p);
+  return [
+    {n:"Z1", lo:b(.5), hi:b(.6), c:"var(--z1)", name:"Recupero", feel:"Respiro tranquillo, puoi cantare. Quasi una camminata veloce.", use:"Riscaldamento, defaticamento, giorni dopo sedute dure."},
+    {n:"Z2", lo:b(.6), hi:b(.7), c:"var(--z2)", name:"Aerobico / fondo", feel:"Riesci a parlare in frasi intere. Ti sembra «troppo lento»: va bene così.", use:"La base di tutto: corse facili e lunghi. Dovrebbe essere ~80% del tempo totale."},
+    {n:"Z3", lo:b(.7), hi:b(.8), c:"var(--z3)", name:"Moderato", feel:"Parli a fatica, poche parole alla volta.", use:"Ritmi medi. Utile ma stancante: è facile finirci senza volerlo nei giorni facili."},
+    {n:"Z4", lo:b(.8), hi:b(.9), c:"var(--z4)", name:"Soglia", feel:"Riesci a dire solo qualche parola. Sostenibile per ~20–40 min in totale.", use:"Ripetute controllate e tempo run. Da introdurre gradualmente."},
+    {n:"Z5", lo:b(.9), hi:hrMax, c:"var(--z5)", name:"Alta intensità", feel:"Non parli. Pochi minuti al massimo.", use:"Ripetute brevi e veloci. Non necessaria all'inizio."},
+  ];
+}
+function zoneOf(hr){ if(!hr) return null; const z = zones(); for(let i=z.length-1;i>=0;i--) if(hr>=z[i].lo) return z[i]; return {n:"<Z1"}; }
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2200); }
+function logFor(pid){ return S.log.find(l => l.programId === pid); }
+/* Dolori: ogni corsa ha pains = [{part:"Ginocchio dx", level:0-10, next:0-10|null}] (next = il giorno dopo) */
+const BODY = ["Anca","Ginocchio","Polpaccio","Tibia","Caviglia","Piede","Tendine d'Achille","Coscia","Schiena","Altro"];
+function painOf(l){ return Math.max(0, ...(l.pains||[]).map(p => Math.max(p.level||0, p.next||0))); }
+function painsText(l){ return (l.pains||[]).map(p => `${p.part} ${p.level}${p.next!=null?"→"+p.next:""}`).join(", "); }
+function painsByPart(logs){ const m = {}; logs.forEach(l => (l.pains||[]).forEach(p => { const v = Math.max(p.level||0,p.next||0); (m[p.part] ??= []).push({v, date:l.date}); })); return m; }
+
+/* ============ VISTE ============ */
+let tab = "programma";
+function render(){
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab===tab));
+  ({programma:renderProgram, calendario:renderCalendar, coach:renderCoach, diario:renderLog, altro:renderOther})[tab]();
+  const n = coachProposals().filter(p=>p.level!=="good").length, b = $("#coachBadge");
+  b.hidden = !n; b.textContent = n;
+}
+function eventsInWeek(start){ const end = addDays(start,6); return S.events.filter(e=>e.date>=start && e.date<=end); }
+const EV_ICON = {gara:"🏁", test:"⏱️", altro:"📌"};
+
+function weekStats(start){
+  const end = addDays(start,6);
+  const runs = S.log.filter(l => l.date>=start && l.date<=end);
+  return {n:runs.length, km:runs.reduce((a,l)=>a+(Number(l.km)||0),0), sec:runs.reduce((a,l)=>a+totalSec(l),0)};
+}
+
+function renderProgram(){
+  $("#title").textContent = "Programma";
+  const now = mondayOf(today());
+  const ws = weekStats(now);
+  $("#subtitle").textContent = `Questa settimana: ${ws.n} uscit${ws.n===1?"a":"e"} · ${ws.km.toFixed(1)} km · ${fmtDur(ws.sec)}`;
+  const weeks = {};
+  S.program.forEach(p => (weeks[p.start] ??= []).push(p));
+  const keys = Object.keys(weeks).sort();
+  let html = topBanners();
+  if(!keys.length) html = `<div class="empty">Nessuna seduta in programma.</div>`;
+  keys.forEach(k => {
+    const list = weeks[k], phase = list[0].phase;
+    const done = list.filter(p => logFor(p.id)).length, req = list.filter(p=>!p.optional).length;
+    const isNow = k===now, past = addDays(k,6) < today();
+    html += `<details class="week ${isNow?"now":""}" ${isNow || (!past && k>now && k<=addDays(now,7)) ? "open":""}>
+      <summary><div class="sp"><h3>${weekLabel(k)} ${isNow?'<span class="pill">questa settimana</span>':""}</h3>
+      <div class="small muted">${esc(phase)} · ${list.length} sedute</div>
+      ${eventsInWeek(k).map(e=>`<div class="small"><span class="ev ev-${e.kind}" style="color:#fff;border-radius:4px;padding:1px 6px">${EV_ICON[e.kind]} ${esc(e.title)}</span> ${dayLabel(e.date)}</div>`).join("")}</div>
+      <span class="pill ${done>=req?"done":""}">${done}/${req}</span></summary><div class="body">
+      ${S.weekly[k]?`<div class="sess small">Bilancio: <b>${FEEL[S.weekly[k].feel]}</b>${S.weekly[k].note?" · "+esc(S.weekly[k].note):""} <button class="btn ghost" data-week="${k}">modifica</button></div>`
+        : (k<=now ? `<div class="sess"><button class="btn" data-week="${k}">Com'è andata questa settimana?</button></div>` : "")}`;
+    list.forEach(p => {
+      const l = logFor(p.id);
+      html += `<div class="sess"><div class="row"><b class="sp">${esc(p.session)}</b>
+        ${p.optional?'<span class="pill">facoltativa</span>':""}
+        ${p.hipGated?'<span class="pill warn" title="Solo se non hai dolori">se ok*</span>':""}
+        ${l?'<span class="pill done">✓ fatto</span>':""}</div>
+        <div class="plan">${esc(p.plan)}</div>
+        <div class="meta"><span>Durata <b>${esc(p.duration)||"–"}</b></span><span>Passo <b>${esc(p.pace)||"–"}</b></span><span>FC <b>${esc(p.hr)||"–"}</b></span></div>
+        ${l?`<div class="meta" style="margin-top:6px"><span>Fatto ${dayLabel(l.date)}</span><span><b>${l.km||"–"} km</b></span><span><b>${fmtDur(totalSec(l))}</b></span>${l.km&&totalSec(l)?`<span><b>${pace(totalSec(l),l.km)}</b></span>`:""}</div>`:""}
+        <div class="actions">${l?`<button class="btn" data-editlog="${l.id}">Vedi / modifica</button>`:`<button class="btn primary" data-do="${p.id}">Registra</button>`}
+        <button class="btn ghost" data-editprog="${p.id}">Modifica seduta</button></div></div>`;
+    });
+    html += `<div class="sess"><button class="btn ghost" data-addprog="${k}">+ Aggiungi seduta a questa settimana</button></div></div></details>`;
+  });
+  html += `<button class="btn" data-addprog="${keys.length?addDays(keys[keys.length-1],7):now}" style="width:100%">+ Nuova settimana</button>`;
+  $("#view").innerHTML = html;
+}
+
+function renderLog(){
+  $("#title").textContent = "Diario";
+  const tot = S.log.reduce((a,l)=>a+(Number(l.km)||0),0);
+  $("#subtitle").textContent = `${S.log.length} uscit${S.log.length===1?"a":"e"} · ${tot.toFixed(1)} km totali`;
+  const now = mondayOf(today());
+  let html = `<div class="stats">${[0,1,2].map(i=>{const w=addDays(now,-7*i), s=weekStats(w);
+    return `<div class="stat"><div class="v">${s.km.toFixed(1)}</div><div class="l">km · ${i===0?"questa sett.":i===1?"sett. scorsa":"2 sett. fa"}<br>${s.n} uscit${s.n===1?"a":"e"} · ${fmtDur(s.sec)}</div></div>`}).join("")}</div>`;
+  const pending = S.log.filter(l => l.date < today() && l.date >= addDays(today(),-3) && (l.pains||[]).some(p=>p.level>0 && p.next==null));
+  if(pending.length) html += `<div class="card" style="margin-top:12px;background:var(--warn-soft);border-color:transparent"><b style="color:var(--warn)">Come va il giorno dopo?</b>
+    <div class="small">Avevi segnalato un dolore (${pending.map(l=>esc(painsText(l))).join("; ")}). Tocca la corsa e indica come sta oggi.</div></div>`;
+  html += `<h2>Uscite</h2>`;
+  const list = [...S.log].sort((a,b)=> b.date.localeCompare(a.date));
+  if(!list.length) html += `<div class="empty">Ancora nessuna corsa registrata.<br>Tocca <b>+</b> o «Registra» in una seduta del programma.</div>`;
+  list.forEach(l => {
+    const sec = totalSec(l), z = zoneOf(Number(l.hrAvg));
+    const hip = (l.pains||[]).length ? "Dolori: "+esc(painsText(l)) : "";
+    html += `<div class="card log" data-editlog="${l.id}"><div class="top"><b>${esc(l.type)||"Corsa"}</b><span class="muted small sp">${dayLabel(l.date)}</span>
+      ${painOf(l)>=3?'<span class="pill warn">dolore</span>':""}</div>
+      <div class="meta" style="margin-top:4px"><span><b>${l.km||"–"} km</b></span><span><b>${fmtDur(sec)}</b></span>${l.km&&sec?`<span><b>${pace(sec,l.km)}</b></span>`:""}
+      ${l.hrAvg?`<span>FC <b>${l.hrAvg}</b>${z&&z.n?" ("+z.n+")":""}</span>`:""}${l.rpe?`<span>Sforzo <b>${l.rpe}</b></span>`:""}${hip?`<span>${hip}</span>`:""}</div>
+      ${l.notes?`<div class="small muted" style="margin-top:4px">${esc(l.notes)}</div>`:""}</div>`;
+  });
+  $("#view").innerHTML = html;
+}
+
+function pacesHtml(){
+  const base = today() < BASE_END, R = base ? RB : window.R_MAIN;
+  const rows = [["Facile",R.F,"La maggior parte dei km. Devi poter parlare. Costruisce il motore aerobico senza stancarti."],
+    ["Medio",R.M,"Un po' più deciso, ma ancora controllato. Usato nei finali dei lunghi."],
+    ["Ritmo mezza (RM)",R.RM,"Il passo della gara: 4:58/km = 1h45. Si allena a blocchi sempre più lunghi da febbraio."],
+    ["Soglia",R.S,"«Comodamente duro»: sostenibile circa un'ora in gara. È il lavoro che più fa scendere il tempo sulla mezza."],
+    ["Ripetute",R.V,"Sopra la soglia, per 3–5 min alla volta. Alzano il tetto (VO₂max) e rendono la soglia più facile."]];
+  return `<h2>I tuoi ritmi</h2><div class="small muted" style="margin:-6px 4px 8px">${base?"Blocco base: 10″/km più lenti dei ritmi da 10 km in 48′, fino al test 5 km del 10 gennaio.":"Da un 10 km ~48′. Aggiornali con il risultato del test 5 km."}</div>
+    <div class="card">${rows.map(r=>`<div class="zone"><div class="sp"><b>${r[0]}</b><div class="small muted">${r[2]}</div></div><div class="r">${r[1]}</div></div>`).join("")}
+    <div class="note" style="margin-top:8px">Regola d'oro: i facili facili, i duri duri. L'errore più comune è correre tutto a ritmo medio.</div></div>`;
+}
+function zonesHtml(){
+  let html = `<h2>Le tue zone cardiache</h2><div class="small muted" style="margin:-6px 4px 8px">FC max ${S.settings.hrMax} · FC riposo ${S.settings.hrRest} · metodo Karvonen</div><div class="card">${zones().map(z=>`<div class="zone"><div class="sw" style="background:${z.c}"></div><div class="n">${z.n}</div>
+    <div class="sp"><b>${z.name}</b><div class="small muted">${z.feel}</div><div class="small">${z.use}</div></div><div class="r">${z.lo}–${z.hi}</div></div>`).join("")}</div>
+    <h2>Da sapere</h2><div class="card"><ul class="tips">
+    <li>Sono <b>stime</b>, non soglie misurate. Puoi cambiarle in «Altro».</li>
+    <li>Nelle corse facili e nel lungo conta più il <b>test della conversazione</b> della FC: il sensore al polso può sbagliare.</li>
+    <li>Nelle ripetute guida con <b>passo e sensazioni</b>: la FC sale in ritardo.</li>
+    <li>Se hai un dolore (3 o più su 10), sostituisci la qualità con corsa facile o riposo. <b>Non recuperare</b> le sedute saltate.</li>
+    <li>Se il fastidio persiste, ricompare, aumenta, ti fa cambiare passo o compare nella vita quotidiana: sospendi e chiedi una valutazione professionale.</li>
+    </ul></div>
+    <h2>Come funziona il metodo</h2><div class="card note">La «riserva cardiaca» è la differenza tra FC max e FC a riposo (${S.settings.hrMax} − ${S.settings.hrRest} = ${S.settings.hrMax-S.settings.hrRest}). Ogni zona è una percentuale di questa riserva, sommata alla FC a riposo: Z1 50–60%, Z2 60–70%, Z3 70–80%, Z4 80–90%, Z5 90–100%. Per misurare bene la FC a riposo: al mattino, appena sveglio, ancora sdraiato, per qualche giorno.</div>`;
+  return html;
+}
+
+function renderOther(){
+  $("#title").textContent = "Altro";
+  $("#subtitle").textContent = "Backup e impostazioni";
+  const last = localStorage.getItem(KEY+"-lastbackup");
+  $("#view").innerHTML = `
+  <h2>Backup dei dati</h2>
+  <div class="card"><div class="note">I dati sono salvati solo su questo telefono. Una volta a settimana tocca «Salva su Drive»: si apre il menu Condividi, scegli <b>Drive</b> e salva (meglio sempre nella stessa cartella, es. «Corsa»). Per ripristinare: «Importa backup» e scegli il file da Drive.</div>
+    <div class="small muted">Ultimo backup: ${last ? dayLabel(last.slice(0,10)) : "mai"}</div>
+    <div class="actions"><button class="btn primary" id="exportJson">Salva su Drive</button><button class="btn" id="importJson">Importa backup</button><button class="btn" id="exportCsv">Esporta diario per Excel (CSV)</button></div></div>
+  <h2>Frequenza cardiaca</h2>
+  <div class="card"><div class="grid2"><div><label>FC max</label><input id="hrMax" type="number" value="${S.settings.hrMax}"></div><div><label>FC a riposo</label><input id="hrRest" type="number" value="${S.settings.hrRest}"></div></div>
+    <div class="actions"><button class="btn" id="saveHr">Salva</button></div></div>
+  <h2>Ripristino</h2>
+  <div class="card"><div class="note">Ricarica il programma per la mezza (16 nov → 4 apr) e le date di test. Il diario delle corse non viene toccato.</div>
+    <div class="actions"><button class="btn danger" id="resetProg">Ripristina programma iniziale</button></div></div>
+  <p class="small muted" style="text-align:center">Corsa · versione 5</p>`;
+  $("#exportJson").onclick = exportJson;
+  $("#importJson").onclick = () => $("#importFile").click();
+  $("#exportCsv").onclick = exportCsv;
+  $("#saveHr").onclick = () => { const a=+$("#hrMax").value, b=+$("#hrRest").value;
+    if(!(a>b && b>30 && a<240)) return toast("Valori non validi");
+    S.settings.hrMax=a; S.settings.hrRest=b; save(); toast("Zone aggiornate"); };
+  $("#resetProg").onclick = () => { if(confirm("Ripristinare il programma iniziale? Le sedute modificate o aggiunte andranno perse.")){
+    S.program = structuredClone(SEED_PROGRAM); SEED_EVENTS.forEach(e=>{ if(!S.events.some(x=>x.id===e.id)) S.events.push({...e}); }); save(); toast("Programma ripristinato"); } };
+}
+
+/* ============ BILANCIO SETTIMANALE ============ */
+const FEEL = {leggera:"troppo leggera", giusta:"giusta", pesante:"un po' pesante", troppo:"troppo pesante"};
+function topBanners(){
+  const t = today(), now = mondayOf(t), last = addDays(now,-7), dow = (parseD(t).getDay()+6)%7;  // 0 = lunedì
+  let h = "";
+  // Fine settimana (sab/dom): bilancio di questa settimana. Lun–mer: quello della scorsa, se manca.
+  const ask = dow>=5 && !S.weekly[now] ? now : (dow<=2 && !S.weekly[last] && S.log.some(l=>l.date>=last && l.date<now) ? last : null);
+  if(ask) h += `<div class="card" style="border-color:var(--accent)"><b>Bilancio della settimana ${weekLabel(ask)}</b>
+    <div class="small muted">Leggera, giusta o pesante? Il coach usa la tua risposta per calibrare le prossime settimane.</div>
+    <div class="actions"><button class="btn primary" data-week="${ask}">Rispondi</button></div></div>`;
+  // Promemoria backup
+  const lb = localStorage.getItem(KEY+"-lastbackup");
+  const days = lb ? Math.floor((Date.now()-new Date(lb))/864e5) : null;
+  if(S.log.length && (days===null || days>=7)) h += `<div class="card" style="background:var(--warn-soft);border-color:transparent"><b style="color:var(--warn)">${days===null?"Non hai ancora fatto un backup":`Ultimo backup ${days} giorni fa`}</b>
+    <div class="small">I dati sono solo su questo telefono. Salvali su Google Drive: ci vuole un attimo.</div>
+    <div class="actions"><button class="btn" data-backup>Salva su Drive</button></div></div>`;
+  return h;
+}
+const weekF = $("#weekForm");
+function openWeek(start){
+  weekF.reset(); weekF.start.value = start;
+  const w = S.weekly[start] || {}, info = weekInfo(start), runs = S.log.filter(l=>l.date>=start && l.date<=addDays(start,6));
+  const km = runs.reduce((a,l)=>a+(+l.km||0),0), sec = runs.reduce((a,l)=>a+totalSec(l),0);
+  $("#weekTitle").textContent = `Settimana ${weekLabel(start)}`;
+  $("#weekSummary").innerHTML = `${runs.length} uscit${runs.length===1?"a":"e"}${info?` su ${info.req} previste`:""} · ${km.toFixed(1)} km · ${fmtDur(sec)}`;
+  weekF.note.value = w.note || "";
+  document.querySelectorAll("#feelBtns button").forEach(b => b.classList.toggle("on", b.dataset.feel===w.feel));
+  $("#weekDlg").showModal();
+}
+$("#feelBtns").addEventListener("click", e => { const b = e.target.closest("button"); if(!b) return;
+  document.querySelectorAll("#feelBtns button").forEach(x => x.classList.toggle("on", x===b)); });
+$("#weekDlg").addEventListener("close", () => {
+  if($("#weekDlg").returnValue!=="save") return;
+  const feel = document.querySelector("#feelBtns .on")?.dataset.feel; if(!feel) return toast("Scegli come è andata");
+  S.weekly[weekF.start.value] = {feel, note: weekF.note.value.trim(), date: today()};
+  save(); render(); toast("Bilancio salvato");
+});
+
+/* ============ CALENDARIO ============ */
+let calMonth = today().slice(0,7);   // "2026-11"
+function weekInfo(start){
+  const list = S.program.filter(p=>p.start===start);
+  if(!list.length) return null;
+  const req = list.filter(p=>!p.optional).length, linked = list.filter(p=>logFor(p.id)).length;
+  const runs = S.log.filter(l=>l.date>=start && l.date<=addDays(start,6)).length;
+  const done = Math.max(linked, Math.min(req, runs));   // conta anche le corse non collegate a una seduta
+  return {phase:list[0].phase, req, done, n:list.length};
+}
+function lastProgramWeek(){ const s = S.program.map(p=>p.start).sort(); return s.length ? s[s.length-1] : null; }
+function weeksBetween(a,b){ return Math.round((parseD(b)-parseD(a))/(7*864e5)); }
+
+function renderCalendar(){
+  $("#title").textContent = "Calendario";
+  const t = today(), upcoming = S.events.filter(e=>e.date>=t).sort((a,b)=>a.date.localeCompare(b.date));
+  const lastW = lastProgramWeek();
+  $("#subtitle").textContent = lastW ? `Programma pianificato fino al ${dayLabel(addDays(lastW,6))}` : "Nessun programma";
+  let html = "";
+  // Prossimo evento: conto alla rovescia
+  const shown = [upcoming.find(e=>e.kind==="gara"), upcoming[0]].filter((e,i,a)=>e && a.indexOf(e)===i)
+    .sort((a,b)=>a.date.localeCompare(b.date));
+  shown.forEach(e => {
+    const days = Math.round((parseD(e.date)-parseD(t))/864e5);
+    const wk = weeksBetween(mondayOf(t), mondayOf(e.date));
+    const missing = lastW ? Math.max(0, weeksBetween(lastW, mondayOf(e.date))) : wk+1;
+    html += `<div class="card" data-editev="${e.id}"><div class="small muted">${EV_ICON[e.kind]} Prossim${e.kind==="gara"?"a gara":e.kind==="test"?"o test":"o evento"}</div>
+      <h3 style="margin:2px 0 6px">${esc(e.title)}</h3>
+      <div class="row"><div><div class="count">${days===0?"Oggi!":days}</div><div class="small muted">${days===0?"":"giorni"}</div></div>
+      <div><div class="count">${wk}</div><div class="small muted">settimane</div></div>
+      <div class="sp small" style="text-align:right">${dayLabel(e.date)}<br>${missing>0?`<span class="pill warn">${missing} sett. da pianificare</span>`:`<span class="pill done">programma completo</span>`}</div></div></div>`;
+  });
+  if(!upcoming.length){
+    html += `<div class="card note">Aggiungi una gara o un test toccando un giorno del calendario: vedrai il conto alla rovescia e quante settimane mancano da pianificare.</div>`;
+  }
+  // Griglia mensile
+  const [y,m] = calMonth.split("-").map(Number);
+  const first = iso(new Date(y,m-1,1)), start = mondayOf(first);
+  const monthName = new Date(y,m-1,1).toLocaleDateString("it-IT",{month:"long",year:"numeric"});
+  html += `<div class="card"><div class="calhead"><button class="btn" data-cal="-1">‹</button><h3>${monthName}</h3><button class="btn" data-cal="1">›</button></div>
+    <div class="cal">${["L","M","M","G","V","S","D"].map(d=>`<div class="dh">${d}</div>`).join("")}<div class="dh">sett.</div>`;
+  for(let w=0; w<6; w++){
+    const ws = addDays(start, w*7);
+    if(w>0 && ws.slice(0,7) > calMonth) break;
+    const info = weekInfo(ws);
+    for(let d=0; d<7; d++){
+      const ds = addDays(ws,d), runs = S.log.filter(l=>l.date===ds), evs = S.events.filter(e=>e.date===ds);
+      html += `<div class="d ${ds.slice(0,7)!==calMonth?"out":""} ${ds===t?"today":""} ${info?"ph-"+esc(info.phase):""}" data-day="${ds}">
+        <span class="num">${parseD(ds).getDate()}</span>
+        ${evs.map(e=>`<span class="ev ev-${e.kind}">${esc(e.title)}</span>`).join("")}
+        <span class="dots">${runs.map(()=>`<span class="dot"></span>`).join("")}</span></div>`;
+    }
+    html += `<div class="wk ${info?"ph-"+esc(info.phase):""}">${info?`<b>${info.done}/${info.req}</b>${esc(info.phase.slice(0,5))}`:"–"}</div>`;
+  }
+  html += `</div><div class="legend"><span><i class="ph-Base"></i>Carico</span><span><i class="ph-Scarico"></i>Scarico</span><span><i class="ph-Test"></i>Test/gara</span><span><i class="ph-Recupero"></i>Recupero</span>
+    <span><i style="background:var(--done);border-radius:50%"></i>corsa fatta</span><span><i class="ev-gara"></i>gara</span><span><i class="ev-test"></i>test</span></div></div>`;
+  // Elenco eventi
+  html += `<h2>Date importanti</h2>`;
+  if(!S.events.length) html += `<div class="empty">Nessun evento. <button class="btn primary" data-newev="${t}">+ Aggiungi gara o test</button></div>`;
+  else {
+    html += [...S.events].sort((a,b)=>a.date.localeCompare(b.date)).map(e => {
+      const days = Math.round((parseD(e.date)-parseD(t))/864e5);
+      return `<div class="card row" data-editev="${e.id}" style="${days<0?"opacity:.55":""}"><span class="ev ev-${e.kind}" style="padding:4px 6px;font-size:14px">${EV_ICON[e.kind]}</span>
+        <div class="sp"><b>${esc(e.title)}</b><div class="small muted">${dayLabel(e.date)} ${parseD(e.date).getFullYear()}${e.notes?" · "+esc(e.notes):""}</div></div>
+        <div class="small" style="text-align:right">${days<0?"passato":days===0?"oggi":`tra ${days} gg`}</div></div>`;
+    }).join("");
+    html += `<button class="btn" data-newev="${t}" style="width:100%">+ Aggiungi gara o test</button>`;
+  }
+  $("#view").innerHTML = html;
+}
+
+function openDay(ds){
+  $("#dayTitle").textContent = dayLabel(ds) + " " + parseD(ds).getFullYear();
+  const evs = S.events.filter(e=>e.date===ds), runs = S.log.filter(l=>l.date===ds);
+  const wk = S.program.filter(p=>p.start===mondayOf(ds));
+  let h = "";
+  evs.forEach(e => h += `<div class="card row" data-editev="${e.id}"><span>${EV_ICON[e.kind]}</span><div class="sp"><b>${esc(e.title)}</b>${e.notes?`<div class="small muted">${esc(e.notes)}</div>`:""}</div><span class="small muted">modifica</span></div>`);
+  runs.forEach(l => h += `<div class="card" data-editlog="${l.id}"><b>${esc(l.type)||"Corsa"}</b> · ${l.km||"–"} km · ${fmtDur(totalSec(l))}${l.km&&totalSec(l)?" · "+pace(totalSec(l),l.km):""}</div>`);
+  if(wk.length) h += `<div class="note"><b>Settimana (${esc(wk[0].phase)}):</b> ${wk.map(p=>`${logFor(p.id)?"✓ ":""}${esc(p.session)}`).join(" · ")}</div>`;
+  if(!h) h = `<div class="note">Niente in questo giorno.</div>`;
+  $("#dayBody").innerHTML = h;
+  $("#dayAddEv").onclick = () => { $("#dayDlg").close(); openEvent(null, ds); };
+  $("#dayAddRun").onclick = () => { $("#dayDlg").close(); openLog(null, null); logF.date.value = ds; };
+  $("#dayDlg").showModal();
+}
+$("#dayBody").addEventListener("click", e => {
+  const t = e.target.closest("[data-editev],[data-editlog]"); if(!t) return;
+  $("#dayDlg").close();
+  if(t.dataset.editev) openEvent(S.events.find(x=>x.id===t.dataset.editev));
+  else openLog(S.log.find(x=>x.id===t.dataset.editlog));
+});
+
+const evF = $("#evForm");
+function openEvent(ev, date){
+  evF.reset(); const e = ev || {date: date || today(), kind:"gara"};
+  ["id","date","kind","title","notes"].forEach(k => evF[k].value = e[k] ?? "");
+  $("#evTitle").textContent = ev ? "Modifica evento" : "Nuovo evento";
+  $("#evDelete").style.display = ev ? "" : "none";
+  $("#evDlg").showModal();
+}
+$("#evDlg").addEventListener("close", () => {
+  const v = $("#evDlg").returnValue, id = evF.id.value;
+  if(v==="delete"){ if(confirm("Eliminare questo evento?")){ S.events = S.events.filter(e=>e.id!==id); save(); render(); } return; }
+  if(v!=="save") return;
+  const e = {id: id || uid(), date: evF.date.value, kind: evF.kind.value, title: evF.title.value.trim(), notes: evF.notes.value.trim()};
+  const i = S.events.findIndex(x=>x.id===e.id); if(i>=0) S.events[i]=e; else S.events.push(e);
+  save(); render(); toast("Evento salvato");
+});
+
+/* ============ COACH ============
+   Il coach NON cambia niente da solo: legge il diario, applica regole prudenti
+   e propone modifiche. Le applica solo se tocchi «Accetta». */
+const isQuality = p => p && (p.hipGated || /qualit|ripetut|test|soglia/i.test(p.session));
+function logsSince(d){ return S.log.filter(l=>l.date>=d && l.date<=today()); }
+function isEasyLog(l){ const p = S.program.find(x=>x.id===l.programId); return p ? !isQuality(p) : !/qualit|ripetut|test|soglia|allung/i.test(l.type||""); }
+// Moltiplica le durate in minuti (solo valori ≥15, per non toccare le ripetute "6 × 2 min")
+function scaleText(s, f){
+  const r = x => Math.max(15, Math.round(x*f/5)*5);
+  return (s||"").replace(/(\d+)(?:\s*[–-]\s*(\d+))?(\s*min)/g, (m,a,b,u) => +a<15 ? m : (b ? `${r(+a)}–${r(+b)}${u}` : `${r(+a)}${u}`));
+}
+function scaleSession(p, f){ return {...p, plan: scaleText(p.plan,f), duration: scaleText(p.duration,f)}; }
+function toEasy(p, label){ return {...p, session: label || "Facile (al posto della qualità)", plan:"30–35 min facili in Z2, pianeggiante", duration:"30–35 min", pace:"Conversazionale", hr:"Z2", hipGated:false}; }
+function addReps(p){ return {...p, plan: p.plan.replace(/(\d+)\s*×/, (m,n)=> +n<10 ? `${+n+1} ×` : m)}; }
+function sessionsOfWeek(start){ return S.program.filter(p=>p.start===start); }
+function replaceSessions(list){ list.forEach(n => { const i = S.program.findIndex(p=>p.id===n.id); if(i>=0) S.program[i]=n; }); }
+
+// Genera la settimana successiva all'ultima pianificata, seguendo lo schema del tuo programma:
+// 2 settimane di costruzione (+10% sui facili, +1 ripetuta) e poi 1 di scarico (−20%, niente qualità).
+function nextWeekDraft(hipOk){
+  const starts = [...new Set(S.program.map(p=>p.start))].sort();
+  const lastW = starts[starts.length-1], now = mondayOf(today());
+  const ns = !lastW || lastW < now ? now : addDays(lastW,7);
+  let build = 0; for(let i=starts.length-1;i>=0;i--){ if(!/scarico|test/i.test(sessionsOfWeek(starts[i])[0].phase)) build++; else break; }
+  const lastBuild = [...starts].reverse().find(s => !/scarico|test|gara|affinamento/i.test(sessionsOfWeek(s)[0].phase));
+  const base = lastBuild ? sessionsOfWeek(lastBuild) : [
+    {session:"Facile",plan:"30 min facili",duration:"30 min",pace:"Conversazionale",hr:"Z2"},
+    {session:"Aerobico",plan:"35 min facili",duration:"35 min",pace:"Non fissato",hr:"Z2"},
+    {session:"Lungo",plan:"45 min facili",duration:"45 min",pace:"Non fissato",hr:"Z2"}];
+  const scarico = build >= 2;
+  const out = base.filter(p=>!p.optional).map(p => {
+    let n = {...p, id:"p"+uid(), start:ns, phase: scarico ? "Scarico" : "Costruzione", optional:false};
+    if(isQuality(p)){
+      if(scarico) n = {...n, session:"Facile + allunghi", plan:"35 min facili; 4 × 20 sec progressivi rilassati solo se senza dolori", duration:"35 min", pace:"Facile; allunghi non sprint", hr:"Z2/sensazioni", hipGated:true};
+      else if(!hipOk) n = toEasy(n);
+      else n = addReps(n);
+    } else n = scaleSession(n, scarico ? 0.8 : 1.1);
+    return n;
+  });
+  return {start: ns, scarico, sessions: out};
+}
+
+function coachProposals(){
+  const P = [], t = today(), now = mondayOf(t), next = addDays(now,7), last = addDays(now,-7);
+  const z2hi = zones()[1].hi;
+  const l7 = logsSince(addDays(t,-6)), l14 = logsSince(addDays(t,-13)), l28 = logsSince(addDays(t,-27));
+  const hip7 = Math.max(0, ...l7.map(painOf)), hip14 = Math.max(0, ...l14.map(painOf));   // dolore massimo (qualsiasi parte)
+  const pendingQuality = [...sessionsOfWeek(now), ...sessionsOfWeek(next)].filter(p=>p.hipGated && !logFor(p.id));
+  const add = o => { if(!(o.key in S.dismissed)) P.push(o); };
+  const byPart14 = painsByPart(l14), byPart7 = painsByPart(l7);
+
+  // 1) DOLORI
+  Object.entries(byPart14).forEach(([part, arr]) => {
+    const high = arr.filter(x=>x.v>=4).length;
+    if(high >= 2) add({key:"painstop-"+part+"-"+now, level:"stop", title:`${esc(part)}: fermati e fatti valutare`,
+      why:`Nelle ultime 2 settimane il dolore a ${esc(part.toLowerCase())} è arrivato a 4 o più in ${high} uscite.`,
+      what:"Sospendi la corsa e chiedi una valutazione a un medico o fisioterapista prima di riprendere. Il programma resta com'è.", label:"Ho capito", apply:()=>{}});
+  });
+  const hot7 = Object.entries(byPart7).map(([part,arr])=>({part, v:Math.max(...arr.map(x=>x.v))})).filter(x=>x.v>=3).sort((a,b)=>b.v-a.v);
+  if(hot7.length && pendingQuality.length) add({key:"pain-"+now, level:"warn", title: hot7[0].v>=4 ? "Dolore alto: niente qualità" : "Dolore presente: togli la qualità",
+    why:`Negli ultimi 7 giorni: ${hot7.map(x=>`${esc(x.part)} ${x.v}/10`).join(", ")}. Le sedute con l'asterisco si fanno solo con dolori a 0–2.`,
+    what:`Sostituisco ${pendingQuality.length} sedut${pendingQuality.length===1?"a":"e"} (${pendingQuality.map(p=>esc(p.session)+" "+weekLabel(p.start)).join(", ")}) con 30–35 min facili.`,
+    label:"Accetta", apply:()=> replaceSessions(pendingQuality.map(p=>toEasy(p)))});
+  // dolore piccolo ma ricorrente nello stesso punto → alleggerisci il lungo
+  Object.entries(byPart14).forEach(([part, arr]) => {
+    if(arr.length < 3 || arr.some(x=>x.v>=3)) return;
+    const longs = sessionsOfWeek(next).filter(p=>/lungo/i.test(p.session) && !logFor(p.id));
+    add({key:"painrec-"+part+"-"+now, level:"warn", title:`${esc(part)}: fastidio ricorrente`,
+      why:`Fastidio lieve a ${esc(part.toLowerCase())} in ${arr.length} uscite delle ultime 2 settimane. Da solo non preoccupa, ma un fastidio che torna sempre nello stesso punto va ascoltato.`,
+      what: longs.length ? "Accorcio del 10% il lungo della settimana prossima. Controlla scarpe e superfici; se sale a 3 o più, togliamo la qualità." : "Controlla scarpe e superfici. Se sale a 3 o più, togliamo la qualità.",
+      label: longs.length ? "Accetta" : "Ho capito", apply:()=> replaceSessions(longs.map(p=>scaleSession(p,0.9)))});
+  });
+
+  // 1b) BILANCIO SETTIMANALE
+  const wNow = S.weekly[now], wLast = S.weekly[last], wPrev = S.weekly[addDays(last,-7)];
+  const rated = wNow ? {start:now, ...wNow, before:wLast} : wLast ? {start:last, ...wLast, before:wPrev} : null;
+  if(rated){
+    const tgt = addDays(rated.start, 7), tgtList = sessionsOfWeek(tgt).filter(p=>!logFor(p.id));
+    const lab = weekLabel(tgt);
+    if(rated.feel==="troppo" && tgtList.length) add({key:"feel-troppo-"+rated.start, level:"warn", title:"Settimana troppo pesante: alleggeriamo",
+      why:`Hai segnato la settimana ${weekLabel(rated.start)} come troppo pesante${rated.note?` («${esc(rated.note)}»)`:""}. Meglio scaricare ora che accumulare fatica.`,
+      what:`Settimana ${lab}: facili e lungo −15%, una ripetuta in meno nella qualità.`,
+      label:"Accetta", apply:()=> replaceSessions(tgtList.map(p => isQuality(p) ? {...p, plan:p.plan.replace(/(\d+)\s*×/, (m,n)=>`${Math.max(2,n-1)} ×`)} : scaleSession(p,0.85)))});
+    else if(rated.feel==="pesante" && rated.before?.feel && ["pesante","troppo"].includes(rated.before.feel) && tgtList.length) add({key:"feel-pesante2-"+rated.start, level:"warn", title:"Due settimane pesanti di fila",
+      why:"La fatica si sta accumulando: è il momento di togliere un po' di carico prima che diventi un problema.",
+      what:`Settimana ${lab}: facili e lungo −10%.`, label:"Accetta", apply:()=> replaceSessions(tgtList.map(p => isQuality(p) ? p : scaleSession(p,0.9)))});
+    else if(rated.feel==="pesante") add({key:"feel-pesante-"+rated.start, level:"info", title:"Settimana un po' pesante",
+      why:"Normale ogni tanto, soprattutto nelle settimane di carico. Dormi bene e tieni davvero lenti i facili.",
+      what:"Non cambio niente per ora. Se anche la prossima è pesante, ti propongo di alleggerire.", label:"Ho capito", apply:()=>{}});
+    else if(rated.feel==="leggera" && rated.before?.feel==="leggera" && hip14<=2 && tgtList.length) add({key:"feel-leggera2-"+rated.start, level:"info", title:"Due settimane leggere: un piccolo passo in più",
+      why:"Ti senti fresco da due settimane e senza dolori. Si può aumentare un po' il volume, non i ritmi.",
+      what:`Settimana ${lab}: facili e lungo +8%. Ritmi invariati: la tentazione di correre più forte è il modo più veloce per farsi male.`,
+      label:"Accetta", apply:()=> replaceSessions(tgtList.map(p => isQuality(p) ? p : scaleSession(p,1.08)))});
+  }
+
+  // 2) FACILI TROPPO DURI
+  const hardEasy = l14.filter(l => isEasyLog(l) && ((l.rpe??0)>=6 || (l.hrAvg??0) > z2hi+3));
+  const nextNonQ = sessionsOfWeek(next).filter(p=>!isQuality(p) && !logFor(p.id));
+  if(hardEasy.length >= 2) add({key:"hardeasy-"+now, level:"warn", title:"Le corse facili non sono facili",
+    why:`${hardEasy.length} corse facili nelle ultime 2 settimane con sforzo ≥6 o FC media sopra la Z2 (${z2hi} bpm).`,
+    what: nextNonQ.length ? `Riduco del 10% la durata delle corse facili della settimana prossima, e rallenta: devi riuscire a parlare.` : "Rallenta nelle prossime uscite facili: devi riuscire a parlare in frasi intere. Camminare un minuto va benissimo.",
+    label: nextNonQ.length ? "Accetta" : "Ho capito", apply:()=> replaceSessions(nextNonQ.map(p=>scaleSession(p,0.9)))});
+
+  // 3) SETTIMANA SCORSA SALTATA IN BUONA PARTE → ripeti il carico invece di progredire
+  const lw = weekInfo(last), lwRuns = S.log.filter(l=>l.date>=last && l.date<=addDays(last,6)).length;
+  if(lw && lw.req >= 2 && lwRuns <= lw.req-2 && S.program.some(p=>p.start>=now))
+    add({key:"repeat-"+last, level:"info", title:"Settimana scorsa: poche uscite",
+      why:`Hai fatto ${lwRuns} uscit${lwRuns===1?"a":"e"} su ${lw.req} previste (${weekLabel(last)}). Le sedute saltate non si recuperano, e progredire ora sarebbe un salto.`,
+      what:"Ripeto questa settimana le sedute della settimana scorsa e sposto tutto il resto del programma avanti di 7 giorni.",
+      label:"Accetta", apply:()=>{
+        S.program.forEach(p=>{ if(p.start>=now) p.start = addDays(p.start,7); });
+        sessionsOfWeek(last).forEach(p=> S.program.push({...p, id:"p"+uid(), start:now}));
+        S.program.sort((a,b)=>a.start.localeCompare(b.start));
+      }});
+
+  // 4) PROGRAMMA IN ESAURIMENTO → proponi la settimana successiva
+  const futureWeeks = new Set(S.program.filter(p=>p.start>now).map(p=>p.start)).size;
+  const nextEv = S.events.filter(e=>e.date>=t && e.kind==="gara").sort((a,b)=>a.date.localeCompare(b.date))[0];
+  if(futureWeeks <= 1 && !P.some(p=>p.level==="stop")){
+    const d = nextWeekDraft(hip14 <= 2);
+    add({key:"plan-"+d.start, level:"info", title:`Pianifica la settimana ${weekLabel(d.start)}`,
+      why:`Il programma ha ${futureWeeks===0?"nessuna settimana":"una sola settimana"} dopo questa.${nextEv?` Mancano ${weeksBetween(now, mondayOf(nextEv.date))} settimane a «${esc(nextEv.title)}».`:""} ${d.scarico?"Dopo due settimane di carico tocca uno scarico.":"Proposta: +10% sui facili, +1 ripetuta sulla qualità."}${hip14>2?" Ci sono ancora dolori: niente qualità.":""}`,
+      what: d.sessions.map(s=>`<b>${esc(s.session)}</b>: ${esc(s.plan)}`).join("<br>") + `<br><span class="small muted">Dopo averla aggiunta puoi modificare ogni seduta.</span>`,
+      label:"Aggiungi al programma", apply:()=>{ S.program.push(...d.sessions); S.program.sort((a,b)=>a.start.localeCompare(b.start)); }});
+  }
+
+  // 5) GARA VICINA → scarico pre-gara (tapering)
+  S.events.filter(e=>e.kind==="gara").forEach(e => {
+    const days = Math.round((parseD(e.date)-parseD(t))/864e5);
+    if(days < 3 || days > 21) return;
+    const wb = addDays(mondayOf(e.date),-7), wr = mondayOf(e.date);
+    const before = sessionsOfWeek(wb).filter(p=>!logFor(p.id) && p.start>=now), race = sessionsOfWeek(wr).filter(p=>!logFor(p.id));
+    if(!before.length && !race.length) return;
+    if(sessionsOfWeek(wr).some(p=>/gara|affinamento/i.test(p.phase))) return;   // scarico già nel programma
+    add({key:"taper-"+e.id, level:"info", title:`Scarico pre-gara: ${esc(e.title)}`,
+      why:`La gara è tra ${days} giorni. Arrivarci riposati conta più dell'ultimo allenamento.`,
+      what:"Settimana prima della gara: facili −30%, qualità più corta. Settimana della gara: facili −40% e niente qualità (solo allunghi).",
+      label:"Accetta", apply:()=>{
+        replaceSessions(before.map(p => isQuality(p) ? {...p, plan: p.plan.replace(/(\d+)\s*×/, (m,n)=>`${Math.max(3,Math.ceil(n*0.6))} ×`)} : scaleSession(p,0.7)));
+        replaceSessions(race.map(p => isQuality(p) ? toEasy(p,"Facile + allunghi pre-gara") : scaleSession(p,0.6)));
+      }});
+  });
+
+  // 6) TEST
+  if(!S.settings.restMeasured) add({key:"resthr", level:"info", title:"Test: misura la FC a riposo",
+    why:`Le zone usano ${S.settings.hrRest} bpm come FC a riposo, un valore stimato. Misurarla rende le zone più giuste.`,
+    what:"Per 3 mattine, appena sveglio e ancora sdraiato, guarda la FC per un minuto. Poi inserisci la media.",
+    label:"Inserisci valore", apply:()=>{ const v = +prompt("FC a riposo media (bpm):", S.settings.hrRest); if(v>30 && v<110){ S.settings.hrRest = v; S.settings.restMeasured = true; } else throw "skip"; }});
+  const maxSeen = Math.max(0, ...S.log.map(l=>l.hrMax||0));
+  if(maxSeen > S.settings.hrMax) add({key:"hrmax-"+maxSeen, level:"info", title:`FC max registrata: ${maxSeen} bpm`,
+    why:`In una corsa hai raggiunto ${maxSeen} bpm, più della FC max impostata (${S.settings.hrMax}). Se il dato è affidabile (fascia toracica, non picco anomalo), le zone vanno aggiornate.`,
+    what:`Imposto FC max a ${maxSeen} e ricalcolo le zone.`, label:"Accetta", apply:()=>{ S.settings.hrMax = maxSeen; }});
+  const activeWeeks = [0,1,2,3].filter(i => { const w = addDays(now,-7*(i+1)); return S.log.filter(l=>l.date>=w && l.date<=addDays(w,6)).length >= 2; }).length;
+  const recentTest = S.log.some(l=>/test/i.test(l.type||"") && l.date>=addDays(t,-42)) || S.program.some(p=>/test/i.test(p.session) && p.start>=now);
+  if(activeWeeks >= 3 && hip14 <= 2 && !recentTest){
+    const q = sessionsOfWeek(next).find(p=>isQuality(p) && !logFor(p.id));
+    add({key:"test30-"+now, level:"info", title:"Test: 30 minuti di soglia",
+      why:"Hai almeno 3 delle ultime 4 settimane con 2+ uscite e senza dolori: è un buon momento per misurare i progressi e tarare i ritmi delle ripetute.",
+      what:`15 min facili + <b>30 min al massimo sforzo regolare</b> che riesci a tenere + 10 min defaticamento. Annota passo medio e FC media degli ultimi 20 min. ${q?`Sostituisce «${esc(q.session)}» della settimana prossima.`:"Lo aggiungo alla settimana prossima."}`,
+      label:"Aggiungi il test", apply:()=>{
+        const test = {id: q?q.id:"p"+uid(), start: next, phase: q?q.phase:(sessionsOfWeek(next)[0]?.phase||"Costruzione"), session:"Test 30 min",
+          plan:"15 min riscaldamento facile + 30 min al massimo sforzo regolare + 10 min defaticamento. Annota passo e FC media degli ultimi 20 min.",
+          duration:"~55 min", pace:"Massimo sostenibile, regolare", hr:"Annota media ultimi 20 min", optional:false, hipGated:true};
+        if(q) replaceSessions([test]); else S.program.push(test);
+        S.program.sort((a,b)=>a.start.localeCompare(b.start));
+      }});
+  }
+
+  // Tutto bene
+  const lwDone = lw ? lwRuns >= lw.req : false;
+  if(!P.length && S.log.length) P.push({key:"ok", level:"good", title:"Tutto in linea", why: `${hip7<=2?"Nessun dolore rilevante":"Qualche dolore da tenere d'occhio"}, ${lwDone?"settimana scorsa completata":"continua con le sedute in programma"}. Nessuna modifica da proporre.`});
+  return P;
+}
+
+function renderCoach(){
+  $("#title").textContent = "Coach";
+  $("#subtitle").textContent = "Proposte basate sul tuo diario: decidi tu";
+  const P = coachProposals();
+  let html = "";
+  if(!S.log.length && !P.length) html += `<div class="card note">Registra qualche corsa (con sforzo e dolori) e qui compariranno le proposte del coach.</div>`;
+  if(!S.log.length) html += `<div class="card note">Il coach legge il diario: più compili sforzo, FC, dolori e bilancio settimanale, più le proposte sono sensate.</div>`;
+  P.forEach((p,i) => html += `<div class="card prop ${p.level}"><h3>${p.title}</h3><div class="why">${p.why}</div>
+    ${p.what?`<div class="what">${p.what}</div>`:""}
+    ${p.apply?`<div class="actions"><button class="btn primary" data-accept="${i}">${p.label}</button>${p.label!=="Ho capito"?`<button class="btn" data-reject="${i}">No, grazie</button>`:""}</div>`:""}</div>`);
+  if(S.coachLog.length) html += `<h2>Modifiche accettate</h2><div class="card small">${S.coachLog.slice(-8).reverse().map(c=>`<div>${dayLabel(c.date)} · ${c.title}</div>`).join("")}</div>`;
+  html += pacesHtml() + zonesHtml();
+  html += `<div class="card small muted">Il coach usa regole prudenti, ricavate dal tuo programma. Non sostituisce un allenatore, un medico o un fisioterapista.</div>`;
+  $("#view").innerHTML = html;
+  $("#view").querySelectorAll("[data-accept],[data-reject]").forEach(b => b.onclick = () => {
+    const p = P[+(b.dataset.accept ?? b.dataset.reject)];
+    if(b.dataset.accept !== undefined){
+      try{ p.apply(); }catch(e){ return; }
+      S.dismissed[p.key] = "si"; S.coachLog.push({date: today(), title: p.title}); toast("Modifica applicata");
+    } else { S.dismissed[p.key] = "no"; toast("Proposta scartata"); }
+    save(); render();
+  });
+}
+
+/* ============ BACKUP ============ */
+function download(name, text, type){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text],{type})); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();}, 500);
+}
+// Backup: sul telefono apre il menu «Condividi» → scegli «Drive» (Salva su Drive). Sul PC scarica il file.
+async function exportJson(){
+  const name = `corsa-backup-${today()}.json`, text = JSON.stringify(S,null,1);
+  const done = () => { localStorage.setItem(KEY+"-lastbackup", new Date().toISOString()); render(); toast("Backup creato"); };
+  try{
+    const file = new File([text], name, {type:"application/json"});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:"Backup corsa"}); return done();
+    }
+  }catch(err){ if(err && err.name==="AbortError") return; }   // annullato dall'utente
+  download(name, text, "application/json"); done();
+}
+function exportCsv(){
+  const cols = ["date","type","km","durata","passo","hrAvg","hrMax","dolori","rpe","terrain","notes"];
+  const head = ["Data","Tipo seduta","Distanza (km)","Durata","Passo medio","FC media","FC max","Dolori (fine → giorno dopo)","Sforzo","Terreno/meteo","Note"];
+  const q = v => `"${String(v??"").replace(/"/g,'""')}"`;
+  const rows = [...S.log].sort((a,b)=>a.date.localeCompare(b.date)).map(l => {
+    const r = {...l, km:String(l.km??"").replace(".",","), durata:fmtDur(totalSec(l)).replace("–",""), passo:pace(totalSec(l),l.km), dolori:painsText(l)};
+    return cols.map(c=>q(r[c])).join(";");
+  });
+  download(`corsa-diario-${today()}.csv`, "﻿"+[head.map(q).join(";"),...rows].join("\r\n"), "text/csv");
+}
+$("#importFile").onchange = async e => {
+  const f = e.target.files[0]; if(!f) return;
+  try{ const d = JSON.parse(await f.text());
+    if(!d.program || !d.log) throw 0;
+    if(!confirm(`Importare il backup? Contiene ${d.log.length} uscite. I dati attuali verranno sostituiti.`)) return;
+    S = d; migrate(); save(); toast("Backup importato"); render();
+  }catch(_){ toast("File non valido"); }
+  e.target.value = "";
+};
+
+/* ============ FORM CORSA ============ */
+const logF = $("#logForm");
+document.querySelectorAll(".scale").forEach(el => {
+  const from = +el.dataset.from;
+  for(let i=from;i<=10;i++){ const b=document.createElement("button"); b.type="button"; b.textContent=i; b.dataset.v=i; el.appendChild(b); }
+  el.addEventListener("click", e => { const b = e.target.closest("button"); if(!b) return;
+    const on = b.classList.contains("on"); el.querySelectorAll("button").forEach(x=>x.classList.remove("on"));
+    if(!on) b.classList.add("on"); });
+});
+function scaleVal(name){ const b = document.querySelector(`.scale[data-scale=${name}] .on`); return b ? +b.dataset.v : null; }
+function setScale(name,v){ document.querySelectorAll(`.scale[data-scale=${name}] button`).forEach(b=>b.classList.toggle("on", v!=null && v!=="" && +b.dataset.v===+v)); }
+let painRows = [];   // dolori della corsa che stai registrando
+$("#painChips").innerHTML = `<button type="button" class="none" data-none>Nessun dolore</button>` + BODY.map(b=>`<button type="button" data-part="${b}">${b}</button>`).join("");
+$("#painChips").addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  if(b.dataset.none!==undefined) painRows = [];
+  else { const part = b.dataset.part, i = painRows.findIndex(r=>r.base===part);
+    if(i>=0) painRows.splice(i,1); else painRows.push({base:part, side:"", level:null, next:null}); }
+  renderPains();
+});
+function splitPart(s){ const m = s.match(/^(.*?)(?: (sx|dx))?$/); return {base:m[1], side:m[2]||""}; }
+function scaleHtml(key, val, from){ let h=""; for(let i=from;i<=10;i++) h+=`<button type="button" data-k="${key}" data-v="${i}" class="${val===i?"on":""}">${i}</button>`; return h; }
+function renderPains(){
+  document.querySelectorAll("#painChips button").forEach(b => b.classList.toggle("on", b.dataset.none!==undefined ? painRows.length===0 : painRows.some(r=>r.base===b.dataset.part)));
+  $("#painRows").innerHTML = painRows.map((r,i)=>`<div class="painrow" data-i="${i}">
+    <div class="row"><b class="sp">${r.base}</b><span class="chips side">${["sx","dx"].map(sd=>`<button type="button" data-side="${sd}" class="${r.side===sd?"on":""}">${sd}</button>`).join("")}</span></div>
+    <div class="sub">A fine allenamento (1 = appena percepibile, 10 = fortissimo)</div><div class="scale">${scaleHtml("level", r.level, 1)}</div>
+    <div class="sub">Il giorno dopo (puoi compilarlo domani)</div><div class="scale">${scaleHtml("next", r.next, 0)}</div></div>`).join("");
+  painCheck();
+}
+$("#painRows").addEventListener("click", e => {
+  const b = e.target.closest("button"), row = e.target.closest(".painrow"); if(!b||!row) return;
+  const r = painRows[+row.dataset.i];
+  if(b.dataset.side) r.side = r.side===b.dataset.side ? "" : b.dataset.side;
+  else if(b.dataset.k){ const v=+b.dataset.v; r[b.dataset.k] = r[b.dataset.k]===v ? null : v; }
+  renderPains();
+});
+function painCheck(){
+  const w = $("#hipWarn"), worst = painRows.map(r=>({n:r.base+(r.side?" "+r.side:""), v:Math.max(r.level??0, r.next??0)})).sort((a,b)=>b.v-a.v)[0];
+  if(worst && worst.v>=4){ w.style.display="block"; w.textContent=`Dolore alto (${worst.n} ${worst.v}/10): nei prossimi giorni niente qualità, solo corsa facile o riposo. Se persiste, ti fa cambiare passo o peggiora, fatti valutare.`; }
+  else if(worst && worst.v>=3){ w.style.display="block"; w.textContent=`Dolore presente (${worst.n} ${worst.v}/10): salta le sedute con l'asterisco finché non torna a 0–2.`; }
+  else w.style.display="none";
+}
+function updPace(){ const sec = (+logF.min.value||0)*60 + (+logF.sec.value||0), km = +logF.km.value;
+  const z = zoneOf(+logF.hrAvg.value);
+  $("#paceCalc").textContent = [km&&sec ? "Passo medio: "+pace(sec,km) : "", z&&z.n&&logF.hrAvg.value ? "FC media in "+z.n : ""].filter(Boolean).join(" · "); }
+["km","min","sec","hrAvg"].forEach(n => logF[n].addEventListener("input", updPace));
+
+function openLog(entry, prog){
+  logF.reset(); const e = entry || {};
+  logF.id.value = e.id || ""; logF.programId.value = e.programId || (prog&&prog.id) || "";
+  const p = prog || S.program.find(x=>x.id===e.programId);
+  logF.date.value = e.date || today();
+  logF.type.value = e.type ?? (p ? p.session : "");
+  ["km","min","sec","hrAvg","hrMax","terrain","notes"].forEach(k => logF[k].value = e[k] ?? "");
+  setScale("rpe", e.rpe);
+  painRows = (e.pains||[]).map(p => ({...splitPart(p.part), level:p.level, next:p.next})); renderPains();
+  $("#logTitle").textContent = entry ? "Modifica corsa" : "Registra corsa";
+  $("#logPlan").innerHTML = p ? `<b>Previsto:</b> ${esc(p.plan)}${p.hipGated?' <span class="pill warn">solo se non hai dolori</span>':""}` : "";
+  $("#logDelete").style.display = entry ? "" : "none";
+  updPace(); $("#logDlg").showModal();
+}
+$("#logDlg").addEventListener("close", () => {
+  const v = $("#logDlg").returnValue, id = logF.id.value;
+  if(v==="delete"){ if(confirm("Eliminare questa corsa?")){ S.log = S.log.filter(l=>l.id!==id); save(); render(); toast("Corsa eliminata"); } return; }
+  if(v!=="save") return;
+  const num = x => x==="" ? null : Number(x);
+  const e = { id: id || uid(), programId: logF.programId.value || null, date: logF.date.value, type: logF.type.value.trim(),
+    km: num(logF.km.value), min: num(logF.min.value), sec: num(logF.sec.value), hrAvg: num(logF.hrAvg.value), hrMax: num(logF.hrMax.value),
+    rpe: scaleVal("rpe"), pains: painRows.filter(r=>r.level!=null||r.next!=null).map(r=>({part: r.base+(r.side?" "+r.side:""), level: r.level??0, next: r.next})), terrain: logF.terrain.value.trim(), notes: logF.notes.value.trim() };
+  const i = S.log.findIndex(l=>l.id===e.id); if(i>=0) S.log[i]=e; else S.log.push(e);
+  save(); render(); toast("Corsa salvata");
+});
+
+/* ============ FORM PROGRAMMA ============ */
+const progF = $("#progForm");
+function openProg(p, start){
+  progF.reset(); const e = p || {start: start || mondayOf(today())};
+  ["id","start","phase","session","plan","duration","pace","hr"].forEach(k => progF[k].value = e[k] ?? "");
+  progF.optional.checked = !!e.optional; progF.hipGated.checked = !!e.hipGated;
+  if(!p){ const same = S.program.find(x=>x.start===e.start); if(same) progF.phase.value = same.phase; }
+  $("#progTitle").textContent = p ? "Modifica seduta" : "Nuova seduta";
+  $("#progDelete").style.display = p ? "" : "none";
+  $("#progDlg").showModal();
+}
+$("#progDlg").addEventListener("close", () => {
+  const v = $("#progDlg").returnValue, id = progF.id.value;
+  if(v==="delete"){ if(confirm("Eliminare questa seduta dal programma?")){ S.program = S.program.filter(p=>p.id!==id);
+    S.log.forEach(l=>{ if(l.programId===id) l.programId=null; }); save(); render(); } return; }
+  if(v!=="save") return;
+  const p = { id: id || "p"+uid(), start: mondayOf(progF.start.value), phase: progF.phase.value.trim(), session: progF.session.value.trim(),
+    plan: progF.plan.value.trim(), duration: progF.duration.value.trim(), pace: progF.pace.value.trim(), hr: progF.hr.value.trim(),
+    optional: progF.optional.checked, hipGated: progF.hipGated.checked };
+  const i = S.program.findIndex(x=>x.id===p.id);
+  if(i>=0) S.program[i]=p; else S.program.push(p);
+  S.program.sort((a,b)=>a.start.localeCompare(b.start));
+  save(); render(); toast("Seduta salvata");
+});
+
+/* ============ EVENTI ============ */
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); scrollTo(0,0); });
+$("#fab").onclick = () => openLog(null, null);
+$("#view").addEventListener("click", e => {
+  const t = e.target.closest("[data-do],[data-editlog],[data-editprog],[data-addprog],[data-day],[data-cal],[data-newev],[data-editev],[data-week],[data-backup]"); if(!t) return;
+  if(t.dataset.week){ e.preventDefault(); openWeek(t.dataset.week); return; }
+  if(t.dataset.backup!==undefined){ exportJson(); return; }
+  if(t.dataset.cal){ const [y,m] = calMonth.split("-").map(Number); const d = new Date(y, m-1+(+t.dataset.cal), 1); calMonth = iso(d).slice(0,7); renderCalendar(); }
+  else if(t.dataset.day) openDay(t.dataset.day);
+  else if(t.dataset.newev) openEvent(null, t.dataset.newev);
+  else if(t.dataset.editev) openEvent(S.events.find(x=>x.id===t.dataset.editev));
+  else if(t.dataset.do) openLog(null, S.program.find(p=>p.id===t.dataset.do));
+  else if(t.dataset.editlog) openLog(S.log.find(l=>l.id===t.dataset.editlog));
+  else if(t.dataset.editprog) openProg(S.program.find(p=>p.id===t.dataset.editprog));
+  else if(t.dataset.addprog) openProg(null, t.dataset.addprog);
+});
+
+load(); render();
+if("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
