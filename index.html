@@ -148,6 +148,14 @@
   .kdot:not(.on){font-size:0}
   .kdot.on{background:var(--kc);font-size:12px;font-weight:700}
   .kdot.opt{border-style:dashed}
+  /* obiettivi */
+  .stars{color:var(--line);white-space:nowrap;letter-spacing:1px}
+  .stars b{font-weight:400;cursor:pointer}
+  .stars b.on{color:#f59e0b}
+  .goal.focus{border-color:#f59e0b;box-shadow:0 0 0 1px #f59e0b inset}
+  .goal.done{background:var(--done-soft);border-color:transparent}
+  .gbar{height:7px;border-radius:4px;background:var(--line);margin:8px 0 6px;overflow:hidden}
+  .gbar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#f59e0b,#16a34a)}
   /* blocchi */
   .tl{position:relative;margin:4px 0 2px}
   .tl .bar{display:flex;gap:2px;height:30px}
@@ -291,6 +299,36 @@
   <div class="actions"><button class="btn primary" value="save">Salva</button><button class="btn" value="cancel" formnovalidate>Annulla</button></div>
 </form></dialog>
 
+<!-- Obiettivo -->
+<dialog id="goalDlg"><form method="dialog" id="goalForm">
+  <h3 id="goalTitleH">Nuovo obiettivo</h3>
+  <label>Tipo</label>
+  <select name="type"><option value="tempo">Tempo su una distanza (es. 10 km sotto 45′)</option><option value="distanza">Corsa lunga (es. correre 25 km)</option>
+    <option value="settimana">Volume (es. 50 km in una settimana)</option><option value="libero">Altro (lo segni tu)</option></select>
+  <div id="gfDist"><label>Distanza</label><select name="dist"><option value="1">1 km</option><option value="5">5 km</option><option value="10">10 km</option><option value="15">15 km</option><option value="21.0975">Mezza maratona</option><option value="42.195">Maratona</option><option value="altro">Altra distanza…</option></select></div>
+  <div id="gfKm"><label id="gfKmLabel">Distanza (km)</label><input name="km" inputmode="decimal" placeholder="es. 15"></div>
+  <div id="gfTime"><label>Tempo obiettivo</label><input name="time" placeholder="es. 45:00 oppure 1:45:00"></div>
+  <div id="gfTitle"><label>Obiettivo</label><input name="title" placeholder="es. Fare una gara in montagna"></div>
+  <label>Quanto ci tieni? (priorità)</label><div id="goalStars" style="font-size:30px"></div>
+  <label>Entro (facoltativo)</label><input type="date" name="due">
+  <label>Note</label><input name="note" placeholder="es. alla mezza di Varsavia">
+  <input type="hidden" name="id">
+  <div class="actions">
+    <button class="btn primary" value="save">Salva</button>
+    <button class="btn" value="cancel" formnovalidate>Annulla</button>
+    <button class="btn" value="mark" id="goalMark" formnovalidate>✓ Raggiunto</button>
+    <button class="btn" value="reopen" id="goalReopen" formnovalidate>Riapri</button>
+    <span class="sp"></span>
+    <button class="btn ghost danger" value="delete" id="goalDelete" formnovalidate>Elimina</button>
+  </div>
+</form></dialog>
+
+<!-- Obiettivo raggiunto -->
+<dialog id="goalWinDlg"><form method="dialog">
+  <div id="goalWinBody"></div>
+  <div class="actions" style="justify-content:center"><button class="btn primary" type="button" id="goalWinNew">+ Nuovo obiettivo</button><button class="btn" value="close">Più tardi</button></div>
+</form></dialog>
+
 <!-- Evento (gara / test) -->
 <dialog id="evDlg"><form method="dialog" id="evForm">
   <h3 id="evTitle">Nuovo evento</h3>
@@ -428,6 +466,7 @@ function migrate(){
   S.dismissed ??= {};   // proposte del coach già accettate/scartate
   S.coachLog ??= [];    // storico delle modifiche accettate
   S.weekly ??= {};
+  S.goals ??= structuredClone(SEED_GOALS);
   S.blocks ??= structuredClone(SEED_BLOCKS);   // cicli del programma (modificabili in futuro)      // bilancio settimanale: { "2026-11-16": {feel, note} }
   // vecchio formato "anca durante / giorno dopo" → elenco dolori
   S.log.forEach(l => {
@@ -511,6 +550,12 @@ function sessKind(p){
   if(isQuality(p) && !/^facile|allunghi/i.test(p.session||"")) return KINDS.qualita;
   return KINDS.facile;
 }
+function focusLine(){
+  const g = S.goals.filter(x=>!x.done).sort((a,b)=>b.prio-a.prio || (a.due||"9").localeCompare(b.due||"9"))[0]; if(!g) return "";
+  const st = goalStatus(g);
+  return `<div class="row small" data-newgoal-go style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)"><span>🎯</span><span class="sp">Focus: <b>${esc(goalTitle(g))}</b></span>${starsHtml(g.prio)}</div>
+    ${g.type!=="libero"?`<div class="gbar" style="margin-top:4px"><i style="width:${st.pct}%"></i></div>`:""}`;
+}
 function kindLegend(){ return `<div class="legend" style="margin-top:8px">${Object.values(KINDS).map(k=>`<span><i style="background:${k.c}"></i>${k.n}</span>`).join("")}</div>`; }
 
 /* ---- Blocchi / cicli ---- */
@@ -527,7 +572,7 @@ function timelineHtml(){
     <div class="tl"><div class="bar">${S.blocks.map(b=>`<div class="seg" data-goto="${b.id}" style="flex:${blockWeeks(b)};background:${b.color}" title="${esc(b.name)}">${blockWeeks(b)>=3?esc(b.name.split(" ")[0]):""}</div>`).join("")}</div>
     ${t>=a && t<z ? `<div class="now" style="left:calc(${pos(t)}% - 1px)"></div>`:""}
     <div class="months">${months}</div></div>
-    <div class="small muted" style="margin-top:4px">${weeksBetween(mondayOf(t), mondayOf(addDays(z,-1)))} settimane alla gara · tocca un blocco per andarci</div>${kindLegend()}</div>`;
+    <div class="small muted" style="margin-top:4px">${weeksBetween(mondayOf(t), mondayOf(addDays(z,-1)))} settimane alla gara · tocca un blocco per andarci</div>${focusLine()}${kindLegend()}</div>`;
 }
 function blockHeader(b){
   const n = blockWeeks(b), t = today();
@@ -713,7 +758,7 @@ function renderOther(){
   <h2>Ripristino</h2>
   <div class="card"><div class="note">Ricarica il programma per la mezza (16 nov → 4 apr) e le date di test. Il diario delle corse non viene toccato.</div>
     <div class="actions"><button class="btn danger" id="resetProg">Ripristina programma iniziale</button></div></div>
-  <p class="small muted" style="text-align:center">Corsa · versione 11</p>`;
+  <p class="small muted" style="text-align:center">Corsa · versione 12</p>`;
   $("#exportJson").onclick = exportJson;
   $("#importJson").onclick = () => $("#importFile").click();
   $("#exportCsv").onclick = exportCsv;
@@ -723,6 +768,155 @@ function renderOther(){
   $("#resetProg").onclick = () => { if(confirm("Ripristinare il programma iniziale? Le sedute modificate o aggiunte andranno perse.")){
     S.program = structuredClone(SEED_PROGRAM); S.blocks = structuredClone(SEED_BLOCKS); SEED_EVENTS.forEach(e=>{ if(!S.events.some(x=>x.id===e.id)) S.events.push({...e}); }); save(); toast("Programma ripristinato"); } };
 }
+
+/* ============ OBIETTIVI ============
+   Tipi: "tempo" (distanza sotto un tempo), "distanza" (una corsa di almeno X km),
+         "settimana" (almeno X km in una settimana), "libero" (lo segni tu).
+   Priorità 1–5: decide l'ordine e qual è il «focus» del momento.
+   Gli obiettivi misurabili si controllano da soli a ogni corsa salvata. */
+const SEED_GOALS = [
+  {id:"g1", type:"tempo", km:21.0975, sec:105*60, title:"Mezza maratona sotto 1h45", prio:5, due:"2027-04-04", note:"Obiettivo principale della primavera"},
+  {id:"g2", type:"tempo", km:10,      sec:45*60,  title:"10 km sotto 45′",          prio:4, due:"2027-03-07", note:""},
+  {id:"g3", type:"tempo", km:5,       sec:20*60,  title:"5 km sotto 20′",           prio:2, due:"",           note:"Più a lungo termine"},
+];
+const DISTS = [{k:1,n:"1 km"},{k:5,n:"5 km"},{k:10,n:"10 km"},{k:15,n:"15 km"},{k:21.0975,n:"Mezza"},{k:42.195,n:"Maratona"}];
+const distName = k => (DISTS.find(d=>Math.abs(d.k-k)<0.01)?.n) || `${String(+k).replace(".",",")} km`;
+function parseTime(s){ const p = String(s||"").trim().split(/[:.′'″"h ]+/).filter(Boolean).map(Number); if(!p.length || p.some(isNaN)) return null;
+  return p.length===3 ? p[0]*3600+p[1]*60+p[2] : p.length===2 ? p[0]*60+p[1] : p[0]*60; }
+function fmtTime(sec){ if(sec==null) return "–"; sec = Math.round(sec); const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60;
+  return h ? `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}` : `${m}:${String(s).padStart(2,"0")}`; }
+function goalTitle(g){
+  if(g.type==="tempo") return `${distName(g.km)} sotto ${fmtTime(g.sec)}`;
+  if(g.type==="distanza") return `Correre ${String(g.km).replace(".",",")} km in un'uscita`;
+  if(g.type==="settimana") return `${String(g.km).replace(".",",")} km in una settimana`;
+  return g.title || "Obiettivo";
+}
+// Miglior tempo su una distanza dentro una corsa (dal tracciato, oppure dalla corsa intera se la distanza coincide)
+function bestEffort(l, km){
+  const D = km*1000, tr = l.track; let best = null;
+  if(tr && tr.d[tr.d.length-1] >= D*0.995){
+    let j = 0;
+    for(let i=0;i<tr.d.length;i++){
+      if(tr.d[i] < D*0.995) continue;
+      const target = tr.d[i]-D;
+      while(j < i && tr.d[j+1] <= target) j++;
+      let ts = tr.t[j];
+      if(tr.d[j] < target && tr.d[j+1] > tr.d[j]) ts = tr.t[j] + (target-tr.d[j])/(tr.d[j+1]-tr.d[j])*(tr.t[j+1]-tr.t[j]);
+      const dt = tr.t[i] - ts; if(dt > 0 && (best==null || dt < best)) best = dt;
+    }
+  }
+  const tot = totalSec(l), m = (l.km||0)*1000;
+  if(tot && m >= D*0.98 && m <= D*1.05){ const est = tot*D/m; if(best==null || est < best) best = est; }
+  return best;
+}
+function goalStatus(g){   // {best, date, ok, pct, text}
+  if(g.type==="tempo"){
+    let best = null, date = null, logId = null;
+    S.log.forEach(l => { const b = bestEffort(l, g.km); if(b!=null && (best==null || b<best)){ best = b; date = l.date; logId = l.id; } });
+    const ok = best!=null && best <= g.sec;
+    const gapKm = best!=null ? (best-g.sec)/g.km : null;
+    if(best==null){   // nessuna corsa su questa distanza: stima con la formula di Riegel dalle uscite più veloci
+      let est = null, from = null;
+      S.log.forEach(l => { const m = (l.km||0)*1000, t = totalSec(l); if(m < 3000 || !t) return;
+        const e = t*Math.pow(g.km*1000/m, 1.06); if(est==null || e < est){ est = e; from = l; } });
+      if(est) return {best:null, ok:false, pct: Math.min(100, g.sec/est*100),
+        text: `Stima dalle tue corse: <b>~${fmtTime(est)}</b> (da ${String(from.km).replace(".",",")} km del ${dayLabel(from.date)}; le corse facili la rendono prudente)`};
+    }
+    return {best, date, logId, ok, pct: best ? Math.min(100, g.sec/best*100) : 0,
+      text: best==null ? "Nessuna corsa su questa distanza ancora" : ok ? `Fatto in ${fmtTime(best)}` :
+        `Record: <b>${fmtTime(best)}</b> (${dayLabel(date)}) · mancano ${fmtTime(best-g.sec)}, cioè ${Math.round(gapKm)}″/km`};
+  }
+  if(g.type==="distanza"){
+    const top = [...S.log].sort((a,b)=>(b.km||0)-(a.km||0))[0], best = top?.km || 0;
+    return {best, date: top?.date, logId: top?.id, ok: best >= g.km, pct: Math.min(100, best/g.km*100),
+      text: best ? `Uscita più lunga: <b>${String(best).replace(".",",")} km</b>${top?" ("+dayLabel(top.date)+")":""}` : "Nessuna corsa ancora"};
+  }
+  if(g.type==="settimana"){
+    const weeks = {}; S.log.forEach(l => { const w = mondayOf(l.date); weeks[w] = (weeks[w]||0) + (+l.km||0); });
+    const [w, best] = Object.entries(weeks).sort((a,b)=>b[1]-a[1])[0] || [null, 0];
+    return {best, date: w ? addDays(w,6) : null, ok: best >= g.km, pct: Math.min(100, best/g.km*100),
+      text: best ? `Settimana migliore: <b>${best.toFixed(1).replace(".",",")} km</b> (${weekLabel(w)})` : "Nessuna corsa ancora"};
+  }
+  return {ok:false, pct:0, text: g.note ? esc(g.note) : "Lo segni tu quando lo raggiungi"};
+}
+// Controlla gli obiettivi aperti; restituisce quelli appena raggiunti
+function checkGoals(){
+  const fresh = [];
+  S.goals.filter(g=>!g.done).forEach(g => { const st = goalStatus(g);
+    if(st.ok){ g.done = {date: st.date || today(), best: st.best ?? null, logId: st.logId || null}; fresh.push(g); } });
+  return fresh;
+}
+function celebrate(list){
+  if(!list.length) return;
+  const g = list[0], tail = list.length>1 ? `<div class="note">E non è l'unico: hai raggiunto anche ${list.slice(1).map(x=>"«"+esc(goalTitle(x))+"»").join(", ")}.</div>` : "";
+  $("#goalWinBody").innerHTML = `<div style="font-size:54px;text-align:center">🏆</div><h3 style="text-align:center">Obiettivo raggiunto!</h3>
+    <p style="text-align:center;font-size:18px;margin:8px 0"><b>${esc(goalTitle(g))}</b></p>
+    <div class="note" style="text-align:center">${g.type==="tempo"&&g.done.best?`Il tuo tempo: <b>${fmtTime(g.done.best)}</b> · `:""}${dayLabel(g.done.date)}</div>${tail}
+    <div class="note" style="text-align:center">Era una priorità ${"★".repeat(g.prio)}. Vuoi fissarne uno nuovo?</div>`;
+  $("#goalWinDlg").showModal();
+}
+function starsHtml(n, name){ return `<span class="stars" ${name?`data-stars="${name}"`:""}>${[1,2,3,4,5].map(i=>`<b data-v="${i}" class="${i<=n?"on":""}">★</b>`).join("")}</span>`; }
+function goalsHtml(){
+  const open = S.goals.filter(g=>!g.done).sort((a,b)=> b.prio-a.prio || (a.due||"9").localeCompare(b.due||"9"));
+  const done = S.goals.filter(g=>g.done).sort((a,b)=>b.done.date.localeCompare(a.done.date));
+  let h = `<h2 style="margin-top:6px">I tuoi obiettivi</h2>`;
+  if(!open.length) h += `<div class="card note">Nessun obiettivo aperto. Fissane uno nuovo!</div>`;
+  open.forEach((g,i) => { const st = goalStatus(g), days = g.due ? Math.round((parseD(g.due)-parseD(today()))/864e5) : null;
+    h += `<div class="card goal ${i===0?"focus":""}" data-goal="${g.id}">
+      <div class="row">${i===0?'<span class="pill">focus</span>':""}<b class="sp">${esc(goalTitle(g))}</b>${starsHtml(g.prio)}</div>
+      <div class="small muted" style="margin-top:4px">${st.text}</div>
+      ${g.type!=="libero"?`<div class="gbar"><i style="width:${st.pct}%"></i></div>`:""}
+      <div class="small muted">${g.due?`Entro ${dayLabel(g.due)} ${parseD(g.due).getFullYear()}${days>=0?` · tra ${days} gg`:" · scaduto"}`:"Senza scadenza"}${g.note&&g.type!=="libero"?" · "+esc(g.note):""}</div></div>`; });
+  h += `<button class="btn" data-newgoal style="width:100%">+ Nuovo obiettivo</button>`;
+  if(done.length) h += `<h2>Raggiunti 🏆</h2>` + done.map(g => `<div class="card goal done" data-goal="${g.id}"><div class="row"><b class="sp">✓ ${esc(goalTitle(g))}</b>${starsHtml(g.prio)}</div>
+    <div class="small muted">${dayLabel(g.done.date)} ${parseD(g.done.date).getFullYear()}${g.type==="tempo"&&g.done.best?" · "+fmtTime(g.done.best):""}</div></div>`).join("");
+  return h;
+}
+const goalF = $("#goalForm");
+function openGoal(g){
+  goalF.reset(); const e = g || {type:"tempo", km:10, prio:3};
+  goalF.id.value = e.id || ""; goalF.type.value = e.type; goalF.note.value = e.note || ""; goalF.due.value = e.due || ""; goalF.title.value = e.title || "";
+  const preset = DISTS.find(d=>Math.abs(d.k-e.km)<0.01);
+  goalF.dist.value = e.type==="tempo" ? (preset ? String(preset.k) : "altro") : "altro";
+  goalF.km.value = e.km ?? ""; goalF.time.value = e.sec ? fmtTime(e.sec) : "";
+  goalF.dataset.prio = e.prio; $("#goalStars").innerHTML = starsHtml(e.prio, "prio");
+  $("#goalTitleH").textContent = g ? "Modifica obiettivo" : "Nuovo obiettivo";
+  $("#goalDelete").style.display = g ? "" : "none";
+  $("#goalReopen").style.display = g?.done ? "" : "none";
+  $("#goalMark").style.display = g && !g.done && g.type==="libero" ? "" : "none";
+  goalFormShow(); $("#goalDlg").showModal();
+}
+function goalFormShow(){
+  const t = goalF.type.value, custom = goalF.dist.value==="altro";
+  $("#gfDist").style.display = t==="tempo" ? "" : "none";
+  $("#gfKm").style.display = (t==="tempo" && custom) || t==="distanza" || t==="settimana" ? "" : "none";
+  $("#gfTime").style.display = t==="tempo" ? "" : "none";
+  $("#gfTitle").style.display = t==="libero" ? "" : "none";
+  $("#gfKmLabel").textContent = t==="settimana" ? "Km nella settimana" : "Distanza (km)";
+}
+goalF.type.addEventListener("change", goalFormShow);
+goalF.dist.addEventListener("change", goalFormShow);
+$("#goalStars").addEventListener("click", e => { const b = e.target.closest("[data-v]"); if(!b) return;
+  goalF.dataset.prio = b.dataset.v; $("#goalStars").innerHTML = starsHtml(+b.dataset.v, "prio"); });
+$("#goalWinNew").onclick = () => { $("#goalWinDlg").close(); openGoal(null); };
+$("#goalDlg").addEventListener("close", () => {
+  const v = $("#goalDlg").returnValue, id = goalF.id.value, old = S.goals.find(g=>g.id===id);
+  if(v==="delete"){ if(confirm("Eliminare questo obiettivo?")){ S.goals = S.goals.filter(g=>g.id!==id); save(); render(); } return; }
+  if(v==="reopen" && old){ delete old.done; save(); render(); toast("Obiettivo riaperto"); return; }
+  if(v==="mark" && old){ old.done = {date: today()}; save(); render(); celebrate([old]); return; }
+  if(v!=="save") return;
+  const t = goalF.type.value;
+  const km = t==="tempo" && goalF.dist.value!=="altro" ? +goalF.dist.value : parseFloat(String(goalF.km.value).replace(",","."));
+  const sec = parseTime(goalF.time.value);
+  if(t!=="libero" && !(km>0)) return toast("Indica la distanza");
+  if(t==="tempo" && !sec) return toast("Indica il tempo, es. 45:00 o 1:45:00");
+  if(t==="libero" && !goalF.title.value.trim()) return toast("Scrivi l'obiettivo");
+  const g = {...(old||{}), id: id || "g"+uid(), type:t, km: t==="libero"?null:km, sec: t==="tempo"?sec:null,
+    title: goalF.title.value.trim(), prio: +goalF.dataset.prio || 3, due: goalF.due.value, note: goalF.note.value.trim()};
+  if(old && (old.type!==g.type || old.km!==g.km || old.sec!==g.sec)) delete g.done;   // obiettivo cambiato: si ricontrolla
+  const i = S.goals.findIndex(x=>x.id===g.id); if(i>=0) S.goals[i] = g; else S.goals.push(g);
+  const fresh = checkGoals(); save(); render(); toast("Obiettivo salvato"); celebrate(fresh);
+});
 
 /* ============ BILANCIO SETTIMANALE ============ */
 const FEEL = {leggera:"troppo leggera", giusta:"giusta", pesante:"un po' pesante", troppo:"troppo pesante"};
@@ -1049,7 +1243,7 @@ function renderCoach(){
   $("#title").textContent = "Coach";
   $("#subtitle").textContent = "Proposte basate sul tuo diario: decidi tu";
   const P = coachProposals();
-  let html = "";
+  let html = goalsHtml() + `<h2>Proposte del coach</h2>`;
   if(!S.log.length && !P.length) html += `<div class="card note">Registra qualche corsa (con sforzo e dolori) e qui compariranno le proposte del coach.</div>`;
   if(!S.log.length) html += `<div class="card note">Il coach legge il diario: più compili sforzo, FC, dolori e bilancio settimanale, più le proposte sono sensate.</div>`;
   P.forEach((p,i) => html += `<div class="card prop ${p.level}"><h3>${p.title}</h3><div class="why">${p.why}</div>
@@ -1316,7 +1510,7 @@ $("#logDlg").addEventListener("close", () => {
   if(hz.some(v=>v)) e.hrZonesMin = hz.map(v=>v||0);
   if(!e.track) delete e.track; if(!e.splits) delete e.splits; if(e.gain==null) delete e.gain;
   const i = S.log.findIndex(l=>l.id===e.id); if(i>=0) S.log[i]=e; else S.log.push(e);
-  pendingImport = null; save(); render(); toast("Corsa salvata");
+  pendingImport = null; const fresh = checkGoals(); save(); render(); toast("Corsa salvata"); celebrate(fresh);
 });
 
 /* ============ DETTAGLIO CORSA (a tutto schermo, grafici dal file dell'orologio) ============ */
@@ -1488,8 +1682,11 @@ $("#progDlg").addEventListener("close", () => {
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); scrollTo(0,0); });
 $("#fab").onclick = () => openLog(null, null);
 $("#view").addEventListener("click", e => {
-  const t = e.target.closest("[data-do],[data-editlog],[data-editprog],[data-addprog],[data-day],[data-cal],[data-newev],[data-editev],[data-week],[data-backup],[data-goto],[data-run]"); if(!t) return;
+  const t = e.target.closest("[data-do],[data-editlog],[data-editprog],[data-addprog],[data-day],[data-cal],[data-newev],[data-editev],[data-week],[data-backup],[data-goto],[data-run],[data-goal],[data-newgoal],[data-newgoal-go]"); if(!t) return;
   if(t.dataset.run){ openRun(t.dataset.run); return; }
+  if(t.dataset.newgoalGo!==undefined){ tab="coach"; render(); scrollTo(0,0); return; }
+  if(t.dataset.goal){ openGoal(S.goals.find(g=>g.id===t.dataset.goal)); return; }
+  if(t.dataset.newgoal!==undefined){ openGoal(null); return; }
   if(t.dataset.week){ e.preventDefault(); openWeek(t.dataset.week); return; }
   if(t.dataset.goto){ document.getElementById("blk-"+t.dataset.goto)?.scrollIntoView({behavior:"smooth", block:"start"}); return; }
   if(t.dataset.backup!==undefined){ exportJson(); return; }
