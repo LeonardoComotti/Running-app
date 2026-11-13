@@ -137,6 +137,17 @@
   .legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--muted);margin-top:10px}
   .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
   .count{font-size:26px;font-weight:700;line-height:1.1}
+  /* sedute colorate per tipo */
+  .week .body{padding:8px;display:flex;flex-direction:column;gap:8px;background:var(--bg)}
+  .sess.kind{border:1px solid var(--line);border-left:6px solid var(--kc);border-radius:12px;background:var(--card)}
+  .sess.kind.isdone{background:color-mix(in srgb, var(--kc) 7%, var(--card))}
+  .sess.addrow{border-top:0;padding:2px 4px}
+  .ktag{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--kc);white-space:nowrap}
+  .kdots{display:flex;align-items:center;gap:5px;margin-top:5px}
+  .kdot{width:22px;height:22px;border-radius:50%;border:2.5px solid var(--kc);display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#fff}
+  .kdot:not(.on){font-size:0}
+  .kdot.on{background:var(--kc);font-size:12px;font-weight:700}
+  .kdot.opt{border-style:dashed}
   /* blocchi */
   .tl{position:relative;margin:4px 0 2px}
   .tl .bar{display:flex;gap:2px;height:30px}
@@ -204,6 +215,15 @@
     <div><label>FC media</label><input name="hrAvg" type="number" min="40" max="230" inputmode="numeric"></div>
     <div><label>FC max</label><input name="hrMax" type="number" min="40" max="230" inputmode="numeric"></div>
   </div>
+  <details id="hrzBox" style="margin-top:10px"><summary class="small" style="color:var(--accent);font-weight:600">Tempo nelle zone FC (minuti, dall'app Huawei)</summary>
+    <div class="small muted" style="margin:6px 0">I file esportati da Huawei non contengono la FC: copia qui i minuti per zona che vedi nell'app Health.</div>
+    <div class="grid3" style="grid-template-columns:repeat(5,1fr)">
+      <div><label>Z1</label><input name="hz1" type="number" min="0" step="1" inputmode="numeric"></div>
+      <div><label>Z2</label><input name="hz2" type="number" min="0" step="1" inputmode="numeric"></div>
+      <div><label>Z3</label><input name="hz3" type="number" min="0" step="1" inputmode="numeric"></div>
+      <div><label>Z4</label><input name="hz4" type="number" min="0" step="1" inputmode="numeric"></div>
+      <div><label>Z5</label><input name="hz5" type="number" min="0" step="1" inputmode="numeric"></div>
+    </div></details>
   <label>Sforzo percepito (1 = facilissimo, 10 = massimo)</label>
   <div class="scale" data-scale="rpe" data-from="1"></div>
   <label>Dolori a fine allenamento</label>
@@ -477,6 +497,22 @@ function weekStats(start){
   return {n:runs.length, km:runs.reduce((a,l)=>a+(Number(l.km)||0),0), sec:runs.reduce((a,l)=>a+totalSec(l),0)};
 }
 
+/* ---- Tipo di seduta: colore e icona per riconoscerle a colpo d'occhio ---- */
+const KINDS = {
+  facile:  {n:"Facile",   i:"🟢", c:"#16a34a"},
+  lungo:   {n:"Lungo",    i:"🔵", c:"#2563eb"},
+  qualita: {n:"Qualità",  i:"🟠", c:"#ea580c"},
+  test:    {n:"Test/gara",i:"🔴", c:"#dc2626"},
+};
+function sessKind(p){
+  const t = (p.session||"")+" "+(p.plan||"");
+  if(/test|gara|mezza maratona/i.test(p.session||"")) return KINDS.test;
+  if(/lungo/i.test(p.session||"")) return KINDS.lungo;
+  if(isQuality(p) && !/^facile|allunghi/i.test(p.session||"")) return KINDS.qualita;
+  return KINDS.facile;
+}
+function kindLegend(){ return `<div class="legend" style="margin-top:8px">${Object.values(KINDS).map(k=>`<span><i style="background:${k.c}"></i>${k.n}</span>`).join("")}</div>`; }
+
 /* ---- Blocchi / cicli ---- */
 function blockOf(day){ return S.blocks.find(b => day>=b.start && day<=b.end) || null; }
 function blockWeeks(b){ return weeksBetween(b.start, addDays(b.end,1)); }
@@ -491,7 +527,7 @@ function timelineHtml(){
     <div class="tl"><div class="bar">${S.blocks.map(b=>`<div class="seg" data-goto="${b.id}" style="flex:${blockWeeks(b)};background:${b.color}" title="${esc(b.name)}">${blockWeeks(b)>=3?esc(b.name.split(" ")[0]):""}</div>`).join("")}</div>
     ${t>=a && t<z ? `<div class="now" style="left:calc(${pos(t)}% - 1px)"></div>`:""}
     <div class="months">${months}</div></div>
-    <div class="small muted" style="margin-top:4px">${weeksBetween(mondayOf(t), mondayOf(addDays(z,-1)))} settimane alla gara · tocca un blocco per andarci</div></div>`;
+    <div class="small muted" style="margin-top:4px">${weeksBetween(mondayOf(t), mondayOf(addDays(z,-1)))} settimane alla gara · tocca un blocco per andarci</div>${kindLegend()}</div>`;
 }
 function blockHeader(b){
   const n = blockWeeks(b), t = today();
@@ -522,14 +558,15 @@ function renderProgram(){
     const isNow = k===now, past = addDays(k,6) < today();
     html += `<details class="week ${isNow?"now":""}" ${isNow || (!past && k>now && k<=addDays(now,7)) ? "open":""}>
       <summary><div class="sp"><h3>${weekLabel(k)} ${isNow?'<span class="pill">questa settimana</span>':""}</h3>
-      <div class="small muted">${esc(phase)} · ${list.length} sedute</div>
+      <div class="kdots">${list.map(p=>{ const kd = sessKind(p), dn = logFor(p.id); return `<span class="kdot ${dn?"on":""} ${p.optional?"opt":""}" style="--kc:${kd.c}" title="${esc(p.session)}">${dn?"✓":kd.i}</span>`; }).join("")}<span class="small muted" style="margin-left:4px">${esc(phase)}</span></div>
       ${eventsInWeek(k).map(e=>`<div class="small"><span class="ev ev-${e.kind}" style="color:#fff;border-radius:4px;padding:1px 6px">${EV_ICON[e.kind]} ${esc(e.title)}</span> ${dayLabel(e.date)}</div>`).join("")}</div>
       <span class="pill ${done>=req?"done":""}">${done}/${req}</span></summary><div class="body">
       ${S.weekly[k]?`<div class="sess small">Bilancio: <b>${FEEL[S.weekly[k].feel]}</b>${S.weekly[k].note?" · "+esc(S.weekly[k].note):""} <button class="btn ghost" data-week="${k}">modifica</button></div>`
         : (k<=now ? `<div class="sess"><button class="btn" data-week="${k}">Com'è andata questa settimana?</button></div>` : "")}`;
     list.forEach(p => {
       const l = logFor(p.id);
-      html += `<div class="sess"><div class="row"><b class="sp">${esc(p.session)}</b>
+      const kd = sessKind(p);
+      html += `<div class="sess kind ${l?"isdone":""}" style="--kc:${kd.c}"><div class="row"><span class="ktag">${kd.n}</span><b class="sp">${esc(p.session)}</b>
         ${p.optional?'<span class="pill">facoltativa</span>':""}
         ${p.hipGated?'<span class="pill warn" title="Solo se non hai dolori">se ok*</span>':""}
         ${l?'<span class="pill done">✓ fatto</span>':""}</div>
@@ -539,7 +576,7 @@ function renderProgram(){
         <div class="actions">${l?`<button class="btn" data-run="${l.id}">Vedi corsa${l.track?" 📈":""}</button>`:`<button class="btn primary" data-do="${p.id}">Registra</button>`}
         <button class="btn ghost" data-editprog="${p.id}">Cambia il piano</button></div></div>`;
     });
-    html += `<div class="sess"><button class="btn ghost" data-addprog="${k}">+ Aggiungi seduta a questa settimana</button></div></div></details>`;
+    html += `<div class="sess addrow"><button class="btn ghost" data-addprog="${k}">+ Aggiungi seduta a questa settimana</button></div></div></details>`;
   });
   html += `<button class="btn" data-addprog="${keys.length?addDays(keys[keys.length-1],7):now}" style="width:100%">+ Nuova settimana</button>`;
   $("#view").innerHTML = html;
@@ -676,7 +713,7 @@ function renderOther(){
   <h2>Ripristino</h2>
   <div class="card"><div class="note">Ricarica il programma per la mezza (16 nov → 4 apr) e le date di test. Il diario delle corse non viene toccato.</div>
     <div class="actions"><button class="btn danger" id="resetProg">Ripristina programma iniziale</button></div></div>
-  <p class="small muted" style="text-align:center">Corsa · versione 10</p>`;
+  <p class="small muted" style="text-align:center">Corsa · versione 11</p>`;
   $("#exportJson").onclick = exportJson;
   $("#importJson").onclick = () => $("#importFile").click();
   $("#exportCsv").onclick = exportCsv;
@@ -1158,7 +1195,13 @@ function parseRunFile(text){
   const t0 = pts[0].time ? new Date(pts[0].time).getTime() : NaN;
   pts.forEach(p => p.t = p.time ? (new Date(p.time).getTime()-t0)/1000 : NaN);
   const timed = pts.filter(p => !isNaN(p.t));
-  const totalM = lapM || (timed.length ? timed[timed.length-1].d : 0);
+  const ext = n => num(all(doc, n)[0]);
+  const fileM = lapM || ext("totalDistance") || 0, fileClimb = ext("CumulativeClimb") || ext("cumulativeClimb");
+  // se il file dichiara la distanza ufficiale, riscalo quella calcolata dal GPS per farle coincidere
+  const gpsM = timed.length ? timed[timed.length-1].d : 0;
+  if(fileM && gpsM && Math.abs(fileM/gpsM-1) < 0.15) timed.forEach(p => p.d *= fileM/gpsM);
+  if(!lapSec && ext("totalTime")) lapSec = ext("totalTime");
+  const totalM = fileM || gpsM;
   const totalS = lapSec || (timed.length ? timed[timed.length-1].t : 0);
   if(!totalS && !totalM) throw new Error("Nel file non ci sono dati di corsa");
   let hrs = timed.map(p=>p.hr).filter(v=>v>0);
@@ -1195,7 +1238,7 @@ function parseRunFile(text){
   return { date: pts[0].time ? iso(new Date(pts[0].time)) : null, km: totalM ? Math.round(totalM/10)/100 : null, sec: Math.round(totalS)||null,
     hrAvg: hrs.length ? Math.round(hrs.reduce((a,b)=>a+b,0)/hrs.length) : lapAvg.length ? Math.round(lapAvg.reduce((a,b)=>a+b,0)/lapAvg.length) : null,
     hrMax: hrs.length ? Math.max(...hrs) : lapMax.length ? Math.max(...lapMax) : null, noHrTrack: !hrs.length,
-    gain: alts.length ? Math.round(gain) : null, splits, track };
+    gain: !isNaN(fileClimb) && fileClimb!=null ? Math.round(fileClimb) : alts.length ? Math.round(gain) : null, splits, track };
 }
 let pendingImport = null;   // dati del file in attesa di essere salvati con la corsa
 function applyImport(r){
@@ -1217,12 +1260,14 @@ $("#runFile").onchange = async e => {
 
 /* Selettore della seduta del programma (le sedute della settimana della data scelta) */
 function fillSessionSelect(keep){
-  const sel = logF.programId, d = logF.date.value || today(), wk = sessionsOfWeek(mondayOf(d));
+  const sel = logF.programId, d = logF.date.value || today();
   const cur = keep !== undefined ? keep : sel.value;
+  const wk = sessionsOfWeek(mondayOf(d)), curP = S.program.find(p=>p.id===cur);
+  if(curP && !wk.includes(curP)) wk.unshift(curP);   // la seduta scelta resta, anche se la data è di un'altra settimana
   const myId = logF.id.value;
   sel.innerHTML = `<option value="">Corsa libera (fuori programma)</option>` + wk.map(p => {
     const taken = S.log.find(l => l.programId===p.id && l.id!==myId);
-    return `<option value="${p.id}">${esc(p.session)}${taken?" · già registrata":""}</option>`; }).join("");
+    return `<option value="${p.id}">${esc(p.session)}${p.start!==mondayOf(d)?" ("+weekLabel(p.start)+")":""}${taken?" · già registrata":""}</option>`; }).join("");
   sel.value = wk.some(p=>p.id===cur) ? cur : "";
 }
 function guessSession(date){   // prima seduta non ancora fatta di quella settimana (le facoltative per ultime)
@@ -1240,6 +1285,8 @@ function openLog(entry, prog, imported){
   logF.type.value = e.type ?? (p ? p.session : "");
   ["km","min","sec","hrAvg","hrMax","terrain","notes"].forEach(k => logF[k].value = e[k] ?? "");
   setScale("rpe", e.rpe);
+  [1,2,3,4,5].forEach(i => logF["hz"+i].value = e.hrZonesMin?.[i-1] ?? "");
+  $("#hrzBox").open = !!e.hrZonesMin;
   painRows = (e.pains||[]).map(p => ({...splitPart(p.part), level:p.level, next:p.next})); renderPains();
   $("#logTitle").textContent = entry ? "Modifica corsa" : "Registra corsa";
   $("#logPlan").innerHTML = p ? `<b>Previsto:</b> ${esc(p.plan)}${p.hipGated?' <span class="pill warn">solo se non hai dolori</span>':""}` : "";
@@ -1265,6 +1312,8 @@ $("#logDlg").addEventListener("close", () => {
     km: num(logF.km.value), min: num(logF.min.value), sec: num(logF.sec.value), hrAvg: num(logF.hrAvg.value), hrMax: num(logF.hrMax.value),
     gain: pendingImport?.gain ?? old?.gain ?? null, splits: pendingImport?.splits ?? old?.splits ?? null, track: pendingImport?.track ?? old?.track ?? null,
     rpe: scaleVal("rpe"), pains: painRows.filter(r=>r.level!=null||r.next!=null).map(r=>({part: r.base+(r.side?" "+r.side:""), level: r.level??0, next: r.next})), terrain: logF.terrain.value.trim(), notes: logF.notes.value.trim() };
+  const hz = [1,2,3,4,5].map(i => num(logF["hz"+i].value));
+  if(hz.some(v=>v)) e.hrZonesMin = hz.map(v=>v||0);
   if(!e.track) delete e.track; if(!e.splits) delete e.splits; if(e.gain==null) delete e.gain;
   const i = S.log.findIndex(l=>l.id===e.id); if(i>=0) S.log[i]=e; else S.log.push(e);
   pendingImport = null; save(); render(); toast("Corsa salvata");
@@ -1365,8 +1414,12 @@ function openRun(id){
       h += lineChart({id:"hr", xs:tr.d, ys:tr.hr, yFmt:v=>Math.round(v), color:COL.hr, bands:hz, title:"Frequenza cardiaca", unit:"bpm"});
       h += zonesCard("Tempo nelle zone cardiache", hz.map(z=>({...z, n:`${z.n} ${z.name}`})), timeInBands(tr, tr.hr, hz),
         b => b.lo===0 ? `< ${b.hi}` : b.hi>=260 ? `> ${b.lo}` : `${b.lo}–${b.hi-1}`);
-    } else h += `<div class="card note">⚠ In questo file non c'è la frequenza cardiaca punto per punto, quindi niente grafico FC e tempo nelle zone. Se l'orologio l'aveva registrata, mandami il file: sistemo la lettura.</div>`;
+    } else if(!l.hrZonesMin) h += `<div class="card note">Il file esportato da Huawei non contiene la frequenza cardiaca. Puoi inserire a mano i minuti per zona (da «Modifica» → «Tempo nelle zone FC»).</div>`;
     if(tr.alt) h += lineChart({id:"alt", xs:tr.d, ys:tr.alt, yFmt:v=>Math.round(v), color:COL.alt, area:true, title:"Altimetria", unit:"m"});
+  }
+  if(l.hrZonesMin && !tr?.hr){
+    const hz = zones().map(z=>({n:`${z.n} ${z.name}`, lo:z.lo, hi:z.hi+1, c:z.c})); hz[0].lo = 0; hz[4].hi = 260;
+    h += zonesCard("Tempo nelle zone cardiache <span class='small muted'>(dall'app Huawei)</span>", hz, l.hrZonesMin.map(m=>m*60), b => b.lo===0 ? `< ${b.hi}` : b.hi>=260 ? `> ${b.lo}` : `${b.lo}–${b.hi-1}`);
   }
   if(l.splits?.length){
     const full = l.splits.filter(s=>!s.part), best = Math.min(...full.map(s=>s.sec)), worst = Math.max(...full.map(s=>s.sec));
