@@ -1,6 +1,6 @@
 // Service worker: fa funzionare l'app offline e riceve i file condivisi (es. da Huawei Health).
 // Quando modifichi l'app, aumenta il numero di versione qui sotto.
-const CACHE = "corsa-v16";
+const CACHE = "corsa-v17";
 const FILES = ["./", "index.html", "manifest.json", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));

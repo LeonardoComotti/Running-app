@@ -211,7 +211,7 @@
   <h3 id="logTitle">Registra corsa</h3>
   <div id="logPlan" class="note"></div>
   <button type="button" class="btn" id="importRun" style="width:100%">📂 Compila da file dell'orologio (.tcx / .gpx)</button>
-  <div class="row" style="margin-top:6px;gap:6px"><input id="stravaLink" placeholder="🔗 link della corsa su Strava" style="flex:1"><button type="button" class="btn" id="stravaGo">Scarica FC</button></div>
+  <div class="row" style="margin-top:6px;gap:6px"><input id="stravaLink" placeholder="🔗 link della corsa su Strava" style="flex:1"><button type="button" class="btn" id="stravaPaste" title="Incolla">📋</button><button type="button" class="btn" id="stravaGo">Scarica FC</button></div>
   <div id="importMsg" class="small" style="margin-top:4px;color:var(--accent)"></div>
   <input type="file" id="runFile" accept=".tcx,.gpx,application/gpx+xml,application/vnd.garmin.tcx+xml,application/xml,text/xml" hidden>
   <div class="grid2">
@@ -807,7 +807,7 @@ function renderOther(){
   <h2>Ripristino</h2>
   <div class="card"><div class="note">Ricarica il programma per la mezza (16 nov → 4 apr) e le date di test. Il diario delle corse non viene toccato.</div>
     <div class="actions"><button class="btn danger" id="resetProg">Ripristina programma iniziale</button></div></div>
-  <p class="small muted" style="text-align:center">Corsa · versione 16</p>`;
+  <p class="small muted" style="text-align:center">Corsa · versione 17</p>`;
   $("#exportJson").onclick = exportJson;
   $("#importJson").onclick = () => $("#importFile").click();
   $("#exportCsv").onclick = exportCsv;
@@ -1514,12 +1514,18 @@ function openInChrome(url){
   } else window.open(url, "_blank");
 }
 function stravaId(txt){ const m = String(txt||"").match(/activities\/(\d{6,})/) || String(txt||"").trim().match(/^(\d{6,})$/); return m ? m[1] : null; }
+$("#stravaPaste").onclick = async () => {
+  try{ const t = await navigator.clipboard.readText(); if(t) $("#stravaLink").value = t.trim(); }
+  catch(_){ $("#importMsg").textContent = "Non riesco a leggere gli appunti: tieni premuto nella casella e scegli «Incolla»."; }
+};
 $("#stravaGo").onclick = () => {
   const v = $("#stravaLink").value.trim(), id = stravaId(v);
   if(id){ openInChrome(`https://www.strava.com/activities/${id}/export_tcx`);
     $("#importMsg").textContent = "⬇ Download avviato in Chrome. Torna qui, tocca «📂 Compila da file» e scegli il .tcx in Download."; return; }
-  if(/strava\.app\.link|strava\.com/.test(v)){ window.open(v.match(/https?:\/\/\S+/)?.[0] || v, "_blank");
-    $("#importMsg").textContent = "Il link breve non contiene il numero della corsa: si apre Strava nel browser. Copia da lì l'indirizzo (strava.com/activities/…) e incollalo qui."; return; }
+  if(/strava\.app\.link|strava\.com/.test(v)){
+    let u = v.match(/https?:\/\/\S+/)?.[0] || v; if(!/^https?:/.test(u)) u = "https://" + u;
+    $("#importMsg").innerHTML = "Link breve: si apre la corsa in <b>Chrome</b>. Lì tocca <b>⋮ → Condividi → Corsa</b>: torni qui con il link completo, poi tocca di nuovo <b>«Scarica FC»</b>.";
+    setTimeout(() => openInChrome(u), 600); return; }
   $("#importMsg").textContent = "⚠ Incolla il link della corsa (strava.com/activities/…) o il suo numero.";
 };
 $("#runFile").onchange = async e => {
@@ -1788,7 +1794,8 @@ load(); render();
       const txt = await resT.text(); await c.delete("shared-text");
       tab = "programma"; render(); openLog(null, null);
       $("#stravaLink").value = (txt.match(/https?:\/\/\S+/)||[txt])[0];
-      $("#importMsg").textContent = stravaId(txt) ? "Link Strava ricevuto: tocca «Scarica FC», poi «📂 Compila da file»." : "Link ricevuto. Tocca «Scarica FC».";
+      $("#importMsg").innerHTML = stravaId(txt) ? "✓ Link completo ricevuto. Tocca <b>«Scarica FC»</b>, poi <b>«📂 Compila da file»</b> e scegli il .tcx in Download."
+        : "Link breve ricevuto. Tocca <b>«Scarica FC»</b>: si apre la corsa in Chrome, da lì <b>⋮ → Condividi → Corsa</b>.";
       return;
     }
     if(!res) return toast("Non ho ricevuto nessun file");
