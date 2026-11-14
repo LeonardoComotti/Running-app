@@ -148,6 +148,12 @@
   .kdot:not(.on){font-size:0}
   .kdot.on{background:var(--kc);font-size:12px;font-weight:700}
   .kdot.opt{border-style:dashed}
+  /* come si fa / dizionario */
+  .howto{margin-top:8px}
+  .howto summary{font-size:13px;font-weight:600;color:var(--accent);cursor:pointer}
+  .gitem{font-size:14px;padding:8px 0;border-top:1px solid var(--line)}
+  .gitem:first-of-type{border-top:0}
+  .gitem b{display:block;margin-bottom:2px}
   /* obiettivi */
   .stars{color:var(--line);white-space:nowrap;letter-spacing:1px}
   .stars b{font-weight:400;cursor:pointer}
@@ -367,7 +373,8 @@ const R = {F:"5:50–6:20/km", M:"5:15–5:30/km", RM:"4:55–5:00/km", S:"4:40�
 // Blocco base (fino al test del 10 gennaio): ritmi 10″/km più lenti, per ripartire con margine.
 const RB = {F:"6:00–6:30/km", M:"5:25–5:40/km", RM:"5:05–5:10/km", S:"4:50–5:00/km", V:"4:30–4:40/km"};
 const BASE_END = "2027-01-11";
-const RS = "15′ riscaldamento facile + ", DF = " + 10′ defaticamento";
+const STRIDE = "4:10–4:20/km";   // passo a cui arrivano gli allunghi
+const RS = "15′ riscaldamento facile + ", DF = " + 10′ defaticamento lentissimo";
 const SEED_PROGRAM = [
  // --- Settimana attuale: rientro dopo l'anca
  ["2026-11-09","Recupero","Facile 1","25–30 min molto facili","25–30 min",R.F,"Z1–Z2",0,0],
@@ -436,7 +443,7 @@ const SEED_PROGRAM = [
  ["2027-03-29","Gara","Qualità corta",RS+"3 × 1 km a ritmo mezza, rec. 2′"+DF+" (martedì)","~40 min","RM "+R.RM,"Z3–Z4",0,0],
  ["2027-03-29","Gara","Pre-gara","25 min facili + 3 allunghi (venerdì o sabato)","25 min",R.F,"Z2",0,0],
  ["2027-03-29","Gara","MEZZA MARATONA","Gara! Primi 5 km a 5:00–5:05, poi 4:55–4:58; dal 18° km dai quello che resta. Obiettivo sotto 1h45.","1h45",R.RM,"Non guardarla nei primi km",0,0],
-].map((r,i)=>({id:"p"+(i+1),start:r[0],phase:r[1],session:r[2],plan:r[3],duration:r[4],pace:r[5],hr:r[6],optional:!!r[7],hipGated:!!r[8]}));
+].map((r,i)=>({id:"p"+(i+1),start:r[0],phase:r[1],session:r[2],plan:clarify(r[3]),duration:r[4],pace:clarifyPace(r[5],r[3]),hr:r[6],optional:!!r[7],hipGated:!!r[8]}));
 window.R_MAIN = R;
 const SEED_BLOCKS = [
   {id:"b0", name:"Rientro",            start:"2026-11-09", end:"2026-11-15", color:"#64748b", goal:"Due corsette leggere dopo lo stop. Solo sensazioni."},
@@ -468,6 +475,7 @@ function migrate(){
   S.coachLog ??= [];    // storico delle modifiche accettate
   S.weekly ??= {};
   S.goals ??= structuredClone(SEED_GOALS);
+  S.program.forEach(p => { const np = clarify(p.plan); if(np !== p.plan){ p.pace = clarifyPace(p.pace, p.plan); p.plan = np; } });
   S.blocks ??= structuredClone(SEED_BLOCKS);   // cicli del programma (modificabili in futuro)      // bilancio settimanale: { "2026-11-16": {feel, note} }
   // vecchio formato "anca durante / giorno dopo" → elenco dolori
   S.log.forEach(l => {
@@ -536,6 +544,43 @@ function weekStats(start){
   const runs = S.log.filter(l => l.date>=start && l.date<=end);
   return {n:runs.length, km:runs.reduce((a,l)=>a+(Number(l.km)||0),0), sec:runs.reduce((a,l)=>a+totalSec(l),0)};
 }
+
+/* ============ SPIEGAZIONI: niente termini ambigui ============
+   clarify() rende espliciti recuperi e passo degli allunghi in qualsiasi testo di seduta.
+   GUIDE è il dizionario: ogni voce si attiva se il suo termine compare nella seduta. */
+function clarify(s){
+  return String(s||"")
+    .replace(/(\d+)\s*×\s*20(?:″| sec)\s*(?:allunghi|progressivi)(?: rilassati| sciolti)?(?:\s*\(rec\. camminando\))?(?!\s*\(rec\. 1)/g, (m,n)=>`${n} × 20″ allunghi (rec. 1′ camminando)`)
+    .replace(/\+\s*(\d+)\s+allunghi(?!\s*\()/g, (m,n)=>`+ ${n} × 20″ allunghi (rec. 1′ camminando)`);
+}
+function clarifyPace(pace, plan){
+  if(!/allunghi/.test(plan||"")) return pace;
+  if(/allunghi (sciolti|non sprint)/.test(pace||"")) return pace.replace(/allunghi (sciolti|non sprint)/, `allunghi ~${STRIDE}`);
+  return /allunghi/.test(pace||"") ? pace : `${pace}; allunghi ~${STRIDE}`;
+}
+function guideEntries(date){
+  const P = (date||today()) < BASE_END ? RB : R;
+  return [
+    {k:/facil/i, t:"Corsa facile", d:`Passo ${P.F}, in Z2. Test pratico: devi riuscire a parlare in frasi intere. Se ti sembra «troppo lento» è giusto così: è qui che costruisci il motore. In salita rallenta pure, conta lo sforzo, non il passo.`},
+    {k:/allung/i, t:"Allunghi (20″)", d:`Brevi accelerazioni da 20 secondi, in piano, alla fine della corsa facile. Parti dal passo facile e accelera gradualmente: negli ultimi 5–10″ arrivi a circa ${STRIDE}, cioè l'85–90% della tua velocità massima. Non è uno sprint: devi sentirti veloce ma sciolto, con spalle rilassate e passi rapidi, e il respiro non va in affanno. Recupero: 1′ camminando (o corsa lentissima) finché il respiro torna normale, poi il successivo. Servono a migliorare tecnica ed economia di corsa, non a stancarti.`},
+    {k:/camminand/i, t:"Recupero camminando", d:"Cammini a passo normale per il tempo indicato (es. 1′). Se non c'è un tempo scritto, è 1′. Non fermarti del tutto: camminare aiuta a recuperare prima."},
+    {k:/jogging|corsa lentissima/i, t:"Recupero in jogging", d:`Corsa lentissima tra una ripetuta e l'altra, più lenta del tuo passo facile (anche 7:00/km o oltre va benissimo) per il tempo indicato (es. «rec. 2′ jogging» = 2 minuti). Se sei molto in affanno puoi camminare i primi 20–30″. Non fermarti: tenere le gambe in movimento fa parte dell'allenamento.`},
+    {k:/riscaldamento/i, t:"Riscaldamento", d:`Corsa facile (${P.F}) per il tempo indicato, di solito 15′, che parte molto lenta e negli ultimi minuti si avvicina al passo facile più svelto. Prima delle ripetute puoi aggiungere 2–3 allunghi per «svegliare» le gambe.`},
+    {k:/defaticamento/i, t:"Defaticamento", d:"10′ di corsa molto lenta (o camminata se serve) dopo la parte veloce. Aiuta a far scendere la FC con calma; non saltarlo."},
+    {k:/soglia/i, t:"Soglia", d:`Passo ${P.S}. È «comodamente duro»: riesci a dire qualche parola ma non a chiacchierare. Dovresti poter fare ogni frazione senza rallentare alla fine: se l'ultima è molto più lenta della prima, sei partito troppo forte. È il lavoro che più fa scendere il tempo sulla mezza.`},
+    {k:/1000 m|1600 m|3′ veloci|ripetut/i, t:"Ripetute", d:`Tratti più veloci della soglia (${P.V}, o il passo scritto nella seduta). Mantieni lo stesso passo in tutte: la prima non deve essere la più veloce. Il recupero indicato (es. «rec. 2′ jogging») va fatto tutto, corricchiando.`},
+    {k:/ritmo mezza|\bRM\b/, t:"Ritmo mezza (RM)", d:`Il passo che vuoi tenere in gara: ${P.RM} (4:58/km = 1h45). Deve sembrare controllato, mai al limite: in gara lo terrai per 21 km. Serve ad abituare gambe e testa a quel passo.`},
+    {k:/ritmo medio|medio/i, t:"Ritmo medio", d:`Passo ${P.M}: più deciso del facile ma ancora sotto controllo, riesci a parlare a frasi brevi. Usato nei finali dei lunghi.`},
+    {k:/lungo/i, t:"Lungo", d:`L'uscita più lunga della settimana, a passo facile (${P.F}) salvo diversa indicazione. Conta la durata, non la velocità. Porta acqua se supera i 75–90′.`},
+    {k:/×/i, t:"Come si legge «3 × 8′»", d:"«3 × 8′» = 3 volte 8 minuti. ′ = minuti, ″ = secondi. «rec.» = recupero tra una frazione e l'altra. Esempio: «3 × 8′ a soglia, rec. 2′ jogging» = 8′ a soglia, 2′ di corsa lentissima, 8′ a soglia, 2′ lentissima, 8′ a soglia."},
+    {k:/test|gara/i, t:"Test e gare", d:"Riscaldamento completo, poi il massimo sforzo che riesci a tenere regolare fino alla fine. Parti un filo più piano di quanto vorresti: è meglio chiudere in crescendo che spegnersi. Annota tempo, FC media e FC max."},
+  ];
+}
+function sessionGuide(p){
+  const txt = `${p.session} ${p.plan} ${p.pace}`;
+  return guideEntries(p.start).filter(g => g.k.test(txt));
+}
+function guideHtml(list){ return list.map(g=>`<div class="gitem"><b>${g.t}</b><div>${g.d}</div></div>`).join(""); }
 
 /* ---- Tipo di seduta: colore e icona per riconoscerle a colpo d'occhio ---- */
 const KINDS = {
@@ -620,7 +665,8 @@ function renderProgram(){
         <div class="meta"><span>Durata <b>${esc(p.duration)||"–"}</b></span><span>Passo <b>${esc(p.pace)||"–"}</b></span><span>FC <b>${esc(p.hr)||"–"}</b></span></div>
         ${l?`<div class="meta" style="margin-top:6px"><span>Fatto ${dayLabel(l.date)}</span><span><b>${l.km||"–"} km</b></span><span><b>${fmtDur(totalSec(l))}</b></span>${l.km&&totalSec(l)?`<span><b>${pace(totalSec(l),l.km)}</b></span>`:""}</div>`:""}
         <div class="actions">${l?`<button class="btn" data-run="${l.id}">Vedi corsa${l.track?" 📈":""}</button>`:`<button class="btn primary" data-do="${p.id}">Registra</button>`}
-        <button class="btn ghost" data-editprog="${p.id}">Cambia il piano</button></div></div>`;
+        <button class="btn ghost" data-editprog="${p.id}">Cambia il piano</button></div>
+        ${sessionGuide(p).length?`<details class="howto"><summary>ℹ️ Come si fa</summary>${guideHtml(sessionGuide(p))}</details>`:""}</div>`;
     });
     html += `<div class="sess addrow"><button class="btn ghost" data-addprog="${k}">+ Aggiungi seduta a questa settimana</button></div></div></details>`;
   });
@@ -725,7 +771,9 @@ function pacesHtml(){
     ["Medio",R.M,"Un po' più deciso, ma ancora controllato. Usato nei finali dei lunghi."],
     ["Ritmo mezza (RM)",R.RM,"Il passo della gara: 4:58/km = 1h45. Si allena a blocchi sempre più lunghi da febbraio."],
     ["Soglia",R.S,"«Comodamente duro»: sostenibile circa un'ora in gara. È il lavoro che più fa scendere il tempo sulla mezza."],
-    ["Ripetute",R.V,"Sopra la soglia, per 3–5 min alla volta. Alzano il tetto (VO₂max) e rendono la soglia più facile."]];
+    ["Ripetute",R.V,"Sopra la soglia, per 3–5 min alla volta. Alzano il tetto (VO₂max) e rendono la soglia più facile."],
+    ["Allunghi (20″)",STRIDE,"Accelerazione progressiva, veloce ma sciolta, mai uno sprint. Recupero 1′ camminando."],
+    ["Jogging di recupero","7:00/km o più lento","Corsa lentissima tra le ripetute. Camminare 20–30″ va bene se sei in affanno."]];
   return `<h2>I tuoi ritmi</h2><div class="small muted" style="margin:-6px 4px 8px">${base?"Blocco base: 10″/km più lenti dei ritmi da 10 km in 48′, fino al test 5 km del 10 gennaio.":"Da un 10 km ~48′. Aggiornali con il risultato del test 5 km."}</div>
     <div class="card">${rows.map(r=>`<div class="zone"><div class="sp"><b>${r[0]}</b><div class="small muted">${r[2]}</div></div><div class="r">${r[1]}</div></div>`).join("")}
     <div class="note" style="margin-top:8px">Regola d'oro: i facili facili, i duri duri. L'errore più comune è correre tutto a ritmo medio.</div></div>`;
@@ -759,7 +807,7 @@ function renderOther(){
   <h2>Ripristino</h2>
   <div class="card"><div class="note">Ricarica il programma per la mezza (16 nov → 4 apr) e le date di test. Il diario delle corse non viene toccato.</div>
     <div class="actions"><button class="btn danger" id="resetProg">Ripristina programma iniziale</button></div></div>
-  <p class="small muted" style="text-align:center">Corsa · versione 14</p>`;
+  <p class="small muted" style="text-align:center">Corsa · versione 16</p>`;
   $("#exportJson").onclick = exportJson;
   $("#importJson").onclick = () => $("#importFile").click();
   $("#exportCsv").onclick = exportCsv;
@@ -1099,7 +1147,7 @@ function nextWeekDraft(hipOk){
   const out = base.filter(p=>!p.optional).map(p => {
     let n = {...p, id:"p"+uid(), start:ns, phase: scarico ? "Scarico" : "Costruzione", optional:false};
     if(isQuality(p)){
-      if(scarico) n = {...n, session:"Facile + allunghi", plan:"35 min facili; 4 × 20 sec progressivi rilassati solo se senza dolori", duration:"35 min", pace:"Facile; allunghi non sprint", hr:"Z2/sensazioni", hipGated:true};
+      if(scarico) n = {...n, session:"Facile + allunghi", plan:"35 min facili + 4 × 20″ allunghi (rec. 1′ camminando), solo se senza dolori", duration:"35 min", pace:`Facile; allunghi ~${STRIDE}`, hr:"Z2/sensazioni", hipGated:true};
       else if(!hipOk) n = toEasy(n);
       else n = addReps(n);
     } else n = scaleSession(n, scarico ? 0.8 : 1.1);
@@ -1251,7 +1299,7 @@ function renderCoach(){
     ${p.what?`<div class="what">${p.what}</div>`:""}
     ${p.apply?`<div class="actions"><button class="btn primary" data-accept="${i}">${p.label}</button>${p.label!=="Ho capito"?`<button class="btn" data-reject="${i}">No, grazie</button>`:""}</div>`:""}</div>`);
   if(S.coachLog.length) html += `<h2>Modifiche accettate</h2><div class="card small">${S.coachLog.slice(-8).reverse().map(c=>`<div>${dayLabel(c.date)} · ${c.title}</div>`).join("")}</div>`;
-  html += pacesHtml() + zonesHtml();
+  html += pacesHtml() + `<h2>Dizionario della corsa</h2><div class="card">${guideHtml(guideEntries())}</div>` + zonesHtml();
   html += `<div class="card small muted">Il coach usa regole prudenti, ricavate dal tuo programma. Non sostituisce un allenatore, un medico o un fisioterapista.</div>`;
   $("#view").innerHTML = html;
   $("#view").querySelectorAll("[data-accept],[data-reject]").forEach(b => b.onclick = () => {
@@ -1457,10 +1505,18 @@ function applyImport(r){
 $("#importRun").onclick = () => $("#runFile").click();
 /* Strava: dal link (o dal numero) della corsa apro il download del TCX completo, FC compresa.
    È il tuo file esportato a mano dal sito, non un collegamento automatico alle API. */
+// Su Android un link strava.com verrebbe «rubato» dall'app Strava (che non permette il download):
+// con un link intent:// chiedo esplicitamente di aprirlo in Chrome.
+function openInChrome(url){
+  if(/Android/i.test(navigator.userAgent)){
+    const u = new URL(url);
+    location.href = `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+  } else window.open(url, "_blank");
+}
 function stravaId(txt){ const m = String(txt||"").match(/activities\/(\d{6,})/) || String(txt||"").trim().match(/^(\d{6,})$/); return m ? m[1] : null; }
 $("#stravaGo").onclick = () => {
   const v = $("#stravaLink").value.trim(), id = stravaId(v);
-  if(id){ window.open(`https://www.strava.com/activities/${id}/export_tcx`, "_blank");
+  if(id){ openInChrome(`https://www.strava.com/activities/${id}/export_tcx`);
     $("#importMsg").textContent = "⬇ Download avviato in Chrome. Torna qui, tocca «📂 Compila da file» e scegli il .tcx in Download."; return; }
   if(/strava\.app\.link|strava\.com/.test(v)){ window.open(v.match(/https?:\/\/\S+/)?.[0] || v, "_blank");
     $("#importMsg").textContent = "Il link breve non contiene il numero della corsa: si apre Strava nel browser. Copia da lì l'indirizzo (strava.com/activities/…) e incollalo qui."; return; }
