@@ -759,7 +759,7 @@ function renderOther(){
   <h2>Ripristino</h2>
   <div class="card"><div class="note">Ricarica il programma per la mezza (16 nov → 4 apr) e le date di test. Il diario delle corse non viene toccato.</div>
     <div class="actions"><button class="btn danger" id="resetProg">Ripristina programma iniziale</button></div></div>
-  <p class="small muted" style="text-align:center">Corsa · versione 13</p>`;
+  <p class="small muted" style="text-align:center">Corsa · versione 14</p>`;
   $("#exportJson").onclick = exportJson;
   $("#importJson").onclick = () => $("#importFile").click();
   $("#exportCsv").onclick = exportCsv;
@@ -1440,9 +1440,11 @@ function applyImport(r){
   pendingImport = r;
   // modulo nuovo ma quel giorno c'è già una corsa senza grafici? la completo invece di duplicarla
   if(!logF.id.value && r.date){
-    const ex = S.log.find(l => l.date===r.date && !l.track);
+    // stessa data e senza grafici, oppure stessa data e distanza simile (±10%): è la stessa corsa
+    const same = S.log.filter(l => l.date===r.date);
+    const ex = same.find(l => !l.track) || (r.km ? same.find(l => l.km && Math.abs(l.km - r.km)/r.km < 0.1) : null);
     if(ex){ const keep = r; openLog(ex); pendingImport = keep; applyImport(keep);
-      $("#importMsg").textContent += " Completata la corsa che avevi già registrato quel giorno."; return; }
+      $("#importMsg").textContent += (ex.track ? " Aggiornata la corsa che avevi già importato quel giorno (sforzo e dolori restano)." : " Completata la corsa che avevi già registrato quel giorno."); return; }
   }
   if(r.date){ logF.date.value = r.date; fillSessionSelect(); }
   if(r.km) logF.km.value = r.km;
