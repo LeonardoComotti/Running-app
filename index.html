@@ -205,6 +205,7 @@
   <h3 id="logTitle">Registra corsa</h3>
   <div id="logPlan" class="note"></div>
   <button type="button" class="btn" id="importRun" style="width:100%">📂 Compila da file dell'orologio (.tcx / .gpx)</button>
+  <div class="row" style="margin-top:6px;gap:6px"><input id="stravaLink" placeholder="🔗 link della corsa su Strava" style="flex:1"><button type="button" class="btn" id="stravaGo">Scarica FC</button></div>
   <div id="importMsg" class="small" style="margin-top:4px;color:var(--accent)"></div>
   <input type="file" id="runFile" accept=".tcx,.gpx,application/gpx+xml,application/vnd.garmin.tcx+xml,application/xml,text/xml" hidden>
   <div class="grid2">
@@ -758,7 +759,7 @@ function renderOther(){
   <h2>Ripristino</h2>
   <div class="card"><div class="note">Ricarica il programma per la mezza (16 nov → 4 apr) e le date di test. Il diario delle corse non viene toccato.</div>
     <div class="actions"><button class="btn danger" id="resetProg">Ripristina programma iniziale</button></div></div>
-  <p class="small muted" style="text-align:center">Corsa · versione 12</p>`;
+  <p class="small muted" style="text-align:center">Corsa · versione 13</p>`;
   $("#exportJson").onclick = exportJson;
   $("#importJson").onclick = () => $("#importFile").click();
   $("#exportCsv").onclick = exportCsv;
@@ -1437,6 +1438,12 @@ function parseRunFile(text){
 let pendingImport = null;   // dati del file in attesa di essere salvati con la corsa
 function applyImport(r){
   pendingImport = r;
+  // modulo nuovo ma quel giorno c'è già una corsa senza grafici? la completo invece di duplicarla
+  if(!logF.id.value && r.date){
+    const ex = S.log.find(l => l.date===r.date && !l.track);
+    if(ex){ const keep = r; openLog(ex); pendingImport = keep; applyImport(keep);
+      $("#importMsg").textContent += " Completata la corsa che avevi già registrato quel giorno."; return; }
+  }
   if(r.date){ logF.date.value = r.date; fillSessionSelect(); }
   if(r.km) logF.km.value = r.km;
   if(r.sec){ logF.min.value = Math.floor(r.sec/60); logF.sec.value = r.sec%60; }
@@ -1446,6 +1453,17 @@ function applyImport(r){
   $("#importMsg").textContent = `✓ Importati: ${r.km??"–"} km${r.splits?.length?`, ${r.splits.length} parziali`:""}${r.track?", grafici":""}.${r.noHrTrack?" ⚠ Nel file non c'è la frequenza cardiaca minuto per minuto.":""} Aggiungi sforzo e dolori e salva.`;
 }
 $("#importRun").onclick = () => $("#runFile").click();
+/* Strava: dal link (o dal numero) della corsa apro il download del TCX completo, FC compresa.
+   È il tuo file esportato a mano dal sito, non un collegamento automatico alle API. */
+function stravaId(txt){ const m = String(txt||"").match(/activities\/(\d{6,})/) || String(txt||"").trim().match(/^(\d{6,})$/); return m ? m[1] : null; }
+$("#stravaGo").onclick = () => {
+  const v = $("#stravaLink").value.trim(), id = stravaId(v);
+  if(id){ window.open(`https://www.strava.com/activities/${id}/export_tcx`, "_blank");
+    $("#importMsg").textContent = "⬇ Download avviato in Chrome. Torna qui, tocca «📂 Compila da file» e scegli il .tcx in Download."; return; }
+  if(/strava\.app\.link|strava\.com/.test(v)){ window.open(v.match(/https?:\/\/\S+/)?.[0] || v, "_blank");
+    $("#importMsg").textContent = "Il link breve non contiene il numero della corsa: si apre Strava nel browser. Copia da lì l'indirizzo (strava.com/activities/…) e incollalo qui."; return; }
+  $("#importMsg").textContent = "⚠ Incolla il link della corsa (strava.com/activities/…) o il suo numero.";
+};
 $("#runFile").onchange = async e => {
   const f = e.target.files[0]; e.target.value = ""; if(!f) return;
   try{ applyImport(parseRunFile(await f.text())); }
@@ -1470,7 +1488,7 @@ function guessSession(date){   // prima seduta non ancora fatta di quella settim
 }
 
 function openLog(entry, prog, imported){
-  logF.reset(); $("#importMsg").textContent = ""; pendingImport = null; const e = entry || {};
+  logF.reset(); $("#importMsg").textContent = ""; $("#stravaLink").value = ""; pendingImport = null; const e = entry || {};
   logF.id.value = e.id || "";
   logF.date.value = e.date || (imported&&imported.date) || today();
   const pid = entry ? (e.programId||"") : prog ? prog.id : imported ? guessSession(logF.date.value) : "";
@@ -1487,7 +1505,7 @@ function openLog(entry, prog, imported){
   $("#logDelete").style.display = entry ? "" : "none";
   updPace();
   if(imported) applyImport(imported);
-  $("#logDlg").showModal();
+  if(!$("#logDlg").open) $("#logDlg").showModal();
 }
 // cambiando data o seduta si aggiornano elenco e «Previsto»
 logF.date.addEventListener("change", () => fillSessionSelect());
@@ -1707,6 +1725,14 @@ load(); render();
   history.replaceState(null, "", location.pathname);
   try{
     const c = await caches.open("corsa-share"), res = await c.match("shared-file");
+    const resT = await c.match("shared-text");
+    if(!res && resT){   // link condiviso (es. da Strava): apro il modulo con il link pronto
+      const txt = await resT.text(); await c.delete("shared-text");
+      tab = "programma"; render(); openLog(null, null);
+      $("#stravaLink").value = (txt.match(/https?:\/\/\S+/)||[txt])[0];
+      $("#importMsg").textContent = stravaId(txt) ? "Link Strava ricevuto: tocca «Scarica FC», poi «📂 Compila da file»." : "Link ricevuto. Tocca «Scarica FC».";
+      return;
+    }
     if(!res) return toast("Non ho ricevuto nessun file");
     await c.delete("shared-file");
     const text = await res.text();

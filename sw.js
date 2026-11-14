@@ -1,6 +1,6 @@
 // Service worker: fa funzionare l'app offline e riceve i file condivisi (es. da Huawei Health).
 // Quando modifichi l'app, aumenta il numero di versione qui sotto.
-const CACHE = "corsa-v12";
+const CACHE = "corsa-v13";
 const FILES = ["./", "index.html", "manifest.json", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
@@ -21,6 +21,10 @@ self.addEventListener("fetch", e => {
         const c = await caches.open("corsa-share");
         if (file && file.size) {
           await c.put("shared-file", new Response(file, { headers: { "X-File-Name": encodeURIComponent(file.name || "") } }));
+        } else {
+          // condivisione di un link/testo (es. «Condividi» da Strava)
+          const txt = [form.get("title"), form.get("text"), form.get("url")].filter(Boolean).join(" ");
+          if (txt) await c.put("shared-text", new Response(txt));
         }
       } catch (err) {}
       return Response.redirect(new URL("./?shared=1", self.registration.scope).href, 303);

@@ -46,7 +46,8 @@
             "application/octet-stream"
           ]
         }
-      ]
+      ],
+      "url": "url"
     }
   }
 }
