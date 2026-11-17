@@ -820,7 +820,7 @@ function renderOther(){
   <h2>Ripristino</h2>
   <div class="card"><div class="note">Ricarica il programma per la mezza (16 nov → 4 apr) e le date di test. Il diario delle corse non viene toccato.</div>
     <div class="actions"><button class="btn danger" id="resetProg">Ripristina programma iniziale</button></div></div>
-  <p class="small muted" style="text-align:center">Corsa · versione 21</p>`;
+  <p class="small muted" style="text-align:center">Corsa · versione 22</p>`;
   bindAiSettings();
   $("#exportJson").onclick = exportJson;
   $("#importJson").onclick = () => $("#importFile").click();
@@ -918,14 +918,16 @@ Regole:
 - Puoi proporre modifiche SOLO alle sedute in "prossime_sedute", usando il loro "id". Mantieni lo stesso stile di scrittura del piano (es. "15′ riscaldamento facile + 3 × 8′ a soglia, rec. 2′ jogging + 10′ defaticamento lentissimo").
 - Non sei un medico: per dolori o sintomi strani rimanda a un professionista.
 Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, senza blocchi di codice.`;
-async function callClaude(messages){
+async function callClaude(messages, schema){
   const key = aiKey(); if(!key) throw new Error("Inserisci la chiave API in Altro → Coach AI.");
   const cfg = aiCfg(), model = cfg.model in AI_MODELS ? cfg.model : "claude-sonnet-5-5";
   let r;
   try{
     r = await fetch("https://api.anthropic.com/v1/messages", {method:"POST",
       headers:{"content-type":"application/json", "x-api-key":key, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true"},
-      body: JSON.stringify({model, max_tokens:2500, system:AI_SYSTEM, messages})});
+      // il «ragionamento» di Claude conta nel limite di token: lascio spazio (16k = solo un tetto, si paga quello usato)
+      body: JSON.stringify({model, max_tokens:16000, system:AI_SYSTEM, messages,
+        output_config:{effort:"medium", ...(schema ? {format:{type:"json_schema", schema}} : {})}})});
   }catch(_){ throw new Error("Nessuna connessione a internet: il coach AI ha bisogno della rete."); }
   const j = await r.json().catch(()=>({}));
   if(!r.ok){
@@ -939,8 +941,11 @@ async function callClaude(messages){
   const u = aiUsageMonth(), price = AI_MODELS[model];
   u.calls++; u.cost += (j.usage?.input_tokens||0)/1e6*price.in + (j.usage?.output_tokens||0)/1e6*price.out; save();
   const text = (j.content||[]).filter(c=>c.type==="text").map(c=>c.text).join("");
+  if(j.stop_reason==="max_tokens") throw new Error("La risposta del coach era troppo lunga ed è stata interrotta: riprova.");
+  if(j.stop_reason==="refusal") throw new Error("Il coach non ha risposto a questa richiesta: riprova o riformula il messaggio.");
   const a = text.indexOf("{"), b = text.lastIndexOf("}");
-  try{ return {json: JSON.parse(text.slice(a, b+1)), raw:text}; }catch(_){ throw new Error("Risposta del coach non leggibile, riprova."); }
+  try{ return {json: JSON.parse(text.slice(a, b+1)), raw:text}; }
+  catch(_){ const e = new Error("Risposta del coach non leggibile, riprova."); e.raw = text.slice(0,2000); throw e; }
 }
 const STEP1 = `Analizza in dettaglio la corsa in "corsa_da_valutare" usando TUTTI i dati disponibili (seduta prevista, passo, parziali, fasce di passo, FC e zone, metriche_calcolate, sforzo, dolori, note, messaggio_dell_atleta, contesto delle ultime settimane). Se l'atleta ha scritto un messaggio, rispondi anche a quello. Rispondi con questo JSON:
 {"valutazione":"3-5 frasi di sintesi: com'è andata rispetto all'obiettivo della seduta","voto":numero da 1 a 5 (quanto la corsa ha rispettato lo scopo della seduta, non quanto è stata veloce),
@@ -952,6 +957,18 @@ const STEP2 = `Grazie alle risposte, valuta se PROPORRE all'atleta di adattare l
 {"commento":"5-6 righe, tono da allenatore che parla al suo atleta: resoconto della corsa alla luce delle risposte, e su cosa concentrarsi nelle prossime settimane per migliorare (1-2 punti concreti e pratici, legati all'obiettivo principale)","sintesi":"2-3 frasi: cosa proponi all'atleta per le prossime sedute e perché (sono solo proposte: sarà lui ad accettarle o rifiutarle)","modifiche":[{"id":"id della seduta","seduta":"nome","piano":"nuovo testo del piano","durata":"…","passo":"…","motivo":"1 frase"}],"prossima_uscita":"1 consiglio pratico per la prossima corsa"}
 "modifiche" può essere vuoto se il programma va bene così (massimo 3 modifiche). Cambia solo ciò che serve davvero.`;
 
+// Schemi JSON: con «structured outputs» l'API garantisce che la risposta rispetti esattamente questa forma
+const strArr = {type:"array", items:{type:"string"}};
+const SCHEMA1 = {type:"object", additionalProperties:false, required:["valutazione","voto","analisi","bene","attenzione","domande"], properties:{
+  valutazione:{type:"string"}, voto:{type:"integer"},
+  analisi:{type:"array", items:{type:"object", additionalProperties:false, required:["titolo","testo"], properties:{titolo:{type:"string"}, testo:{type:"string"}}}},
+  bene:strArr, attenzione:strArr,
+  domande:{type:"array", items:{type:"object", additionalProperties:false, required:["id","testo","opzioni"], properties:{id:{type:"string"}, testo:{type:"string"}, opzioni:strArr}}}}};
+const SCHEMA2 = {type:"object", additionalProperties:false, required:["commento","sintesi","modifiche","prossima_uscita"], properties:{
+  commento:{type:"string"}, sintesi:{type:"string"}, prossima_uscita:{type:"string"},
+  modifiche:{type:"array", items:{type:"object", additionalProperties:false, required:["id","seduta","piano","durata","passo","motivo"], properties:{
+    id:{type:"string"}, seduta:{type:"string"}, piano:{type:"string"}, durata:{type:"string"}, passo:{type:"string"}, motivo:{type:"string"}}}}}};
+const SCHEMA_OK = {type:"object", additionalProperties:false, required:["ok"], properties:{ok:{type:"boolean"}}};
 let aiRun = null;   // corsa su cui sta lavorando il coach
 function openCoach(runId, autostart){
   const l = S.log.find(x=>x.id===runId); if(!l) return;
@@ -968,7 +985,9 @@ function renderCoachDlg(state){
     <div class="note small">Costo indicativo: circa 3–6 centesimi di dollaro con Sonnet.</div><div class="actions"><button class="btn primary" id="aiGo">Chiedi la valutazione</button></div>`;
     $("#aiGo").onclick = () => { l.coachNote = $("#aiNote").value.trim(); save(); aiStep1(); }; return; }
   let h = "";
-  if(a.error) h += `<div class="card" style="background:var(--warn-soft);border-color:transparent;color:var(--warn)">⚠ ${esc(a.error)}</div>`;
+  if(a.error) h += `<div class="card" style="background:var(--warn-soft);border-color:transparent;color:var(--warn)">⚠ ${esc(a.error)}
+    ${a.rawErr?`<details class="small" style="margin-top:6px"><summary>Dettagli tecnici</summary><pre style="white-space:pre-wrap;font-size:11px">${esc(a.rawErr)}</pre></details>`:""}
+    ${!a.v1?`<div class="actions"><button class="btn" type="button" id="aiRetry">Riprova</button></div>`:""}</div>`;
   if(a.v1){ const v = a.v1;
     h += `<div class="card"><div class="row"><b class="sp">Valutazione</b>${v.voto?`<span class="stars">${[1,2,3,4,5].map(i=>`<b class="${i<=v.voto?"on":""}">★</b>`).join("")}</span>`:""}</div>
       <div style="margin-top:6px">${esc(v.valutazione)}</div>
@@ -1000,6 +1019,7 @@ function renderCoachDlg(state){
   b.querySelectorAll("[data-q]").forEach(box => box.onclick = e => { const o = e.target.closest("[data-o]"); if(!o) return;
     (a.answers ||= {})[box.dataset.q] = o.dataset.o; box.querySelectorAll("button").forEach(x=>x.classList.toggle("on", x===o)); save(); });
   if($("#aiSend")) $("#aiSend").onclick = () => { a.extra = $("#aiExtra")?.value || ""; aiStep2(); };
+  if($("#aiRetry")) $("#aiRetry").onclick = () => { delete aiRun.ai; save(); aiStep1(); };
   $("#aiRedo").onclick = () => { if(confirm("Rifare la valutazione da capo? (nuova richiesta, pochi centesimi)")){ delete aiRun.ai; save(); aiStep1(); } };
   b.querySelectorAll("[data-aiok],[data-aino]").forEach(btn => btn.onclick = () => {
     const i = +(btn.dataset.aiok ?? btn.dataset.aino), m = a.v2.modifiche[i]; a.applied ||= {};
@@ -1015,10 +1035,10 @@ async function aiStep1(){
   const l = aiRun; renderCoachDlg("loading");
   const ctx = aiContext(l);
   try{
-    const r = await callClaude([{role:"user", content: STEP1 + "\n\nDATI:\n" + JSON.stringify(ctx)}]);
+    const r = await callClaude([{role:"user", content: STEP1 + "\n\nDATI:\n" + JSON.stringify(ctx)}], SCHEMA1);
     l.ai = {date: today(), model: aiCfg().model, ctx, v1: r.json, raw1: r.raw};
     if(!(r.json.domande||[]).length) await aiStep2(true);
-  }catch(err){ l.ai = {error: err.message}; }
+  }catch(err){ l.ai = {error: err.message, rawErr: err.raw}; }
   save(); if(aiRun===l) renderCoachDlg(); render();
 }
 async function aiStep2(silent){
@@ -1028,7 +1048,7 @@ async function aiStep2(silent){
     const r = await callClaude([
       {role:"user", content: STEP1 + "\n\nDATI:\n" + JSON.stringify(a.ctx)},
       {role:"assistant", content: a.raw1},
-      {role:"user", content: STEP2 + "\n\nRISPOSTE:\n" + (answers || "(nessuna domanda)")}]);
+      {role:"user", content: STEP2 + "\n\nRISPOSTE:\n" + (answers || "(nessuna domanda)")}], SCHEMA2);
     a.v2 = r.json; delete a.error;
   }catch(err){ a.error = err.message; }
   save(); if(!silent){ renderCoachDlg(); render(); }
@@ -1061,7 +1081,7 @@ function bindAiSettings(){
   $("#aiAuto").onchange = e => { aiCfg().auto = e.target.checked; save(); };
   if($("#aiKeyDel")) $("#aiKeyDel").onclick = () => { if(confirm("Rimuovere la chiave da questo telefono?")){ localStorage.removeItem(AI_KEY); render(); } };
   $("#aiTest").onclick = async () => { $("#aiTest").textContent = "Provo…";
-    try{ const r = await callClaude([{role:"user", content:'Rispondi solo con {"ok":true}'}]); toast(r.json.ok ? "✓ Funziona! Coach AI pronto" : "Risposta strana, ma la chiave funziona"); }
+    try{ const r = await callClaude([{role:"user", content:'Rispondi con ok = true'}], SCHEMA_OK); toast(r.json.ok ? "✓ Funziona! Coach AI pronto" : "Risposta strana, ma la chiave funziona"); }
     catch(err){ toast(err.message); } render(); };
 }
 
