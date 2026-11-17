@@ -154,6 +154,11 @@
   .gitem{font-size:14px;padding:8px 0;border-top:1px solid var(--line)}
   .gitem:first-of-type{border-top:0}
   .gitem b{display:block;margin-bottom:2px}
+  /* coach AI */
+  #aiDlg .chips button{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:99px;padding:7px 12px;font:inherit;font-size:14px}
+  #aiDlg .chips button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .spin{width:28px;height:28px;margin:0 auto 10px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 0.8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
   /* obiettivi */
   .stars{color:var(--line);white-space:nowrap;letter-spacing:1px}
   .stars b{font-weight:400;cursor:pointer}
@@ -247,6 +252,7 @@
   <div class="hipwarn" id="hipWarn"></div>
   <label>Terreno / meteo</label><input name="terrain" placeholder="es. pianura, asfalto, freddo">
   <label>Note</label><textarea name="notes" placeholder="Sensazioni, cosa è andato bene o male…"></textarea>
+  <label>🤖 Messaggio per il coach AI (facoltativo)</label><textarea name="coachNote" placeholder="es. avevo poco tempo e ho tagliato il riscaldamento; vorrei spostare il lungo a sabato…"></textarea>
   <input type="hidden" name="id">
   <div class="actions">
     <button class="btn primary" value="save">Salva</button>
@@ -281,6 +287,12 @@
     <button class="btn ghost danger" value="delete" id="progDelete" formnovalidate>Elimina</button>
   </div>
 </form></dialog>
+
+<!-- Coach AI -->
+<dialog id="aiDlg"><div style="padding:18px">
+  <div class="row"><h3 class="sp" id="aiTitle">Coach AI</h3><button type="button" class="btn ghost" id="aiClose">✕</button></div>
+  <div id="aiBody" style="margin-top:10px"></div>
+</div></dialog>
 
 <!-- Dettaglio corsa -->
 <dialog id="runDlg"><div class="runhead">
@@ -801,13 +813,15 @@ function renderOther(){
   <div class="card"><div class="note">I dati sono salvati solo su questo telefono. Una volta a settimana tocca «Salva su Drive»: si apre il menu Condividi, scegli <b>Drive</b> e salva (meglio sempre nella stessa cartella, es. «Corsa»). Per ripristinare: «Importa backup» e scegli il file da Drive.</div>
     <div class="small muted">Ultimo backup: ${last ? dayLabel(last.slice(0,10)) : "mai"}</div>
     <div class="actions"><button class="btn primary" id="exportJson">Salva su Drive</button><button class="btn" id="importJson">Importa backup</button><button class="btn" id="exportCsv">Esporta diario per Excel (CSV)</button></div></div>
+  ${aiSettingsHtml()}
   <h2>Frequenza cardiaca</h2>
   <div class="card"><div class="grid2"><div><label>FC max</label><input id="hrMax" type="number" value="${S.settings.hrMax}"></div><div><label>FC a riposo</label><input id="hrRest" type="number" value="${S.settings.hrRest}"></div></div>
     <div class="actions"><button class="btn" id="saveHr">Salva</button></div></div>
   <h2>Ripristino</h2>
   <div class="card"><div class="note">Ricarica il programma per la mezza (16 nov → 4 apr) e le date di test. Il diario delle corse non viene toccato.</div>
     <div class="actions"><button class="btn danger" id="resetProg">Ripristina programma iniziale</button></div></div>
-  <p class="small muted" style="text-align:center">Corsa · versione 17</p>`;
+  <p class="small muted" style="text-align:center">Corsa · versione 21</p>`;
+  bindAiSettings();
   $("#exportJson").onclick = exportJson;
   $("#importJson").onclick = () => $("#importFile").click();
   $("#exportCsv").onclick = exportCsv;
@@ -816,6 +830,239 @@ function renderOther(){
     S.settings.hrMax=a; S.settings.hrRest=b; save(); toast("Zone aggiornate"); };
   $("#resetProg").onclick = () => { if(confirm("Ripristinare il programma iniziale? Le sedute modificate o aggiunte andranno perse.")){
     S.program = structuredClone(SEED_PROGRAM); S.blocks = structuredClone(SEED_BLOCKS); SEED_EVENTS.forEach(e=>{ if(!S.events.some(x=>x.id===e.id)) S.events.push({...e}); }); save(); toast("Programma ripristinato"); } };
+}
+
+/* ============ COACH AI (Claude, tramite la TUA chiave API) ============
+   - La chiave resta solo su questo telefono (localStorage separato, NON finisce nei backup).
+   - Si inviano ad Anthropic solo: programma delle prossime 2 settimane, obiettivi, ritmi/zone,
+     riepilogo delle ultime corse e i dati di quella appena fatta (niente GPS).
+   - Il coach propone, tu decidi: nessuna modifica viene applicata senza «Accetta». */
+const AI_KEY = "corsa-ai-key";
+const AI_MODELS = {
+  "claude-sonnet-5-5": {name:"Sonnet 5.5 (consigliato)", in:2, out:10},      // $ per milione di token
+  "claude-haiku-5-5":  {name:"Haiku 5.5 (più economico)", in:0.10, out:0.50},
+};
+const aiKey = () => { try{ return localStorage.getItem(AI_KEY) || ""; }catch(_){ return ""; } };
+function aiCfg(){ S.ai ??= {model:"claude-sonnet-5-5", auto:true, usage:{}}; return S.ai; }
+function aiUsageMonth(){ const m = today().slice(0,7), u = aiCfg().usage[m] ||= {calls:0, cost:0}; return u; }
+
+function runSummary(l){
+  const p = S.program.find(x=>x.id===l.programId), sec = totalSec(l);
+  const o = {data:l.date, seduta_prevista: p ? `${p.session}: ${p.plan} (durata ${p.duration}, passo ${p.pace}, FC ${p.hr})` : "corsa libera",
+    tipo:l.type||null, km:l.km, durata: sec?fmtDur(sec):null, passo_medio: l.km&&sec?pace(sec,l.km):null,
+    fc_media:l.hrAvg||null, fc_max:l.hrMax||null, sforzo_1_10:l.rpe??null, dislivello_m:l.gain??null,
+    dolori: (l.pains||[]).length ? painsText(l) : "nessuno", note:l.notes||null};
+  return o;
+}
+// Metriche calcolate nell'app: danno al coach numeri precisi invece di stime
+function runMetrics(l){
+  const m = {}, sp = (l.splits||[]).filter(s=>!s.part);
+  if(sp.length >= 2){
+    const secs = sp.map(s=>s.sec), avg = secs.reduce((a,b)=>a+b,0)/secs.length;
+    const sd = Math.sqrt(secs.reduce((a,b)=>a+(b-avg)**2,0)/secs.length);
+    m.regolarita_parziali = `deviazione ${Math.round(sd)}″/km sul passo medio ${fmtPace(avg)} (${sd<8?"molto regolare":sd<15?"regolare":"irregolare"})`;
+    const h = Math.floor(sp.length/2), a1 = secs.slice(0,h).reduce((a,b)=>a+b,0)/h, a2 = secs.slice(sp.length-h).reduce((a,b)=>a+b,0)/h;
+    m.prima_vs_seconda_meta = `${fmtPace(a1)} → ${fmtPace(a2)} (${a2<a1-3?"negative split, chiusa in crescendo":a2>a1+3?"positive split, calo nel finale":"pari"})`;
+    const best = sp.reduce((x,y)=>y.sec<x.sec?y:x), worst = sp.reduce((x,y)=>y.sec>x.sec?y:x);
+    m.km_piu_veloce = `km ${best.km} in ${fmtPace(best.sec)}`; m.km_piu_lento = `km ${worst.km} in ${fmtPace(worst.sec)}`;
+  }
+  const tr = l.track;
+  if(tr?.hr && tr.t.length > 20){
+    // deriva cardiaca: rapporto velocità/FC nella prima e nella seconda metà (escludo i primi 10 minuti)
+    const idx = tr.t.map((t,i)=>i).filter(i => tr.t[i] > 600 && tr.hr[i]);
+    if(idx.length > 20){
+      const half = Math.floor(idx.length/2), eff = ids => { const a = ids[0], b = ids[ids.length-1], v = (tr.d[b]-tr.d[a])/((tr.t[b]-tr.t[a])||1);
+        const hr = ids.reduce((x,i)=>x+tr.hr[i],0)/ids.length; return {v, hr, e: v/hr}; };
+      const e1 = eff(idx.slice(0,half)), e2 = eff(idx.slice(half)), drift = (e1.e-e2.e)/e1.e*100;
+      m.deriva_cardiaca = `${drift.toFixed(1)}% (FC media ${Math.round(e1.hr)} → ${Math.round(e2.hr)} bpm; <5% = buona base aerobica, solo valida per corse a ritmo costante)`;
+    }
+    const zmax = Math.max(...tr.hr.filter(Boolean)); m.fc_picco_percento_max = `${Math.round(zmax/S.settings.hrMax*100)}% della FC max impostata`;
+  }
+  if(l.hrAvg && l.km && totalSec(l)) m.battiti_per_km = Math.round(l.hrAvg * totalSec(l)/60 / l.km);
+  return m;
+}
+function runDetailForAI(l){
+  const o = runSummary(l);
+  o.metriche_calcolate = runMetrics(l);
+  if(l.coachNote) o.messaggio_dell_atleta = l.coachNote;
+  if(l.splits?.length) o.parziali_km = l.splits.map(s => `${s.part?s.km+"km":"km"+s.km}: ${fmtPace(s.part?s.sec/s.part*1000:s.sec)}${s.hr?" FC"+s.hr:""}`);
+  if(l.track){
+    const pc = smoothPace(l.track), pb = paceBands(l.date), tp = timeInBands(l.track, pc, pb);
+    o.tempo_fasce_passo = Object.fromEntries(pb.map((b,i)=>[b.n, fmtDur(tp[i])]).filter(([,v])=>v && v!=="–"));
+    if(l.track.hr){ const hz = zones().map(z=>({n:z.n, lo:z.lo, hi:z.hi+1})); hz[0].lo=0; hz[4].hi=260;
+      const th = timeInBands(l.track, l.track.hr, hz); o.tempo_zone_fc = Object.fromEntries(hz.map((z,i)=>[z.n, fmtDur(th[i])]).filter(([,v])=>v && v!=="–")); }
+  } else if(l.hrZonesMin) o.minuti_zone_fc = Object.fromEntries(l.hrZonesMin.map((m,i)=>["Z"+(i+1), m]));
+  return o;
+}
+function aiContext(l){
+  const t = today(), P = t < BASE_END ? RB : R;
+  const upcoming = S.program.filter(p => p.start >= mondayOf(t) && p.start <= addDays(mondayOf(t),14) && !logFor(p.id))
+    .map(p => ({id:p.id, settimana:weekLabel(p.start), fase:p.phase, seduta:p.session, piano:p.plan, durata:p.duration, passo:p.pace, fc:p.hr, facoltativa:!!p.optional}));
+  const recent = S.log.filter(x => x.id!==l.id && x.date >= addDays(t,-21)).sort((a,b)=>a.date.localeCompare(b.date)).map(runSummary);
+  const weekly = Object.entries(S.weekly).filter(([k]) => k >= addDays(mondayOf(t),-21)).map(([k,v]) => `${weekLabel(k)}: ${FEEL[v.feel]}${v.note?" ("+v.note+")":""}`);
+  return {
+    atleta: {altezza_m:1.82, fc_max:S.settings.hrMax, fc_riposo:S.settings.hrRest,
+      zone_fc: zones().map(z=>`${z.n} ${z.lo}-${z.hi}`).join(", "),
+      ritmi_attuali: {facile:P.F, medio:P.M, ritmo_mezza:P.RM, soglia:P.S, ripetute:P.V, allunghi:STRIDE},
+      obiettivi: S.goals.filter(g=>!g.done).map(g=>`${goalTitle(g)} — priorità ${g.prio}/5${g.due?", entro "+g.due:""}`),
+      eventi: S.events.filter(e=>e.date>=t).map(e=>`${e.date} ${e.kind}: ${e.title}`),
+      blocco_attuale: blockOf(t)?.name || null, storia: "Rientro da un fastidio all'anca a inizio novembre; 3 uscite a settimana (a volte 2 o 4)."},
+    bilanci_settimanali: weekly, corse_ultime_3_settimane: recent, corsa_da_valutare: runDetailForAI(l), prossime_sedute: upcoming};
+}
+const AI_SYSTEM = `Sei un allenatore di corsa esperto e prudente che segue un atleta amatoriale (obiettivo principale: mezza maratona sotto 1h45 in primavera). Rispondi SEMPRE in italiano, in modo diretto e concreto, senza giri di parole.
+Regole:
+- Valuta la corsa rispetto alla seduta prevista: passo nelle fasce giuste? FC coerente? Sforzo percepito sensato? Dolori?
+- Non aumentare mai il carico più del 10% da una settimana all'altra. Nel dubbio, sii conservativo.
+- Dolore 3/10 o più: niente qualità finché non torna a 0-2. Dolore 4+ ripetuto o in peggioramento: consiglia di fermarsi e farsi valutare da un professionista.
+- Le corse facili devono essere davvero facili: se sono state corse troppo forte, dillo.
+- Puoi proporre modifiche SOLO alle sedute in "prossime_sedute", usando il loro "id". Mantieni lo stesso stile di scrittura del piano (es. "15′ riscaldamento facile + 3 × 8′ a soglia, rec. 2′ jogging + 10′ defaticamento lentissimo").
+- Non sei un medico: per dolori o sintomi strani rimanda a un professionista.
+Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, senza blocchi di codice.`;
+async function callClaude(messages){
+  const key = aiKey(); if(!key) throw new Error("Inserisci la chiave API in Altro → Coach AI.");
+  const cfg = aiCfg(), model = cfg.model in AI_MODELS ? cfg.model : "claude-sonnet-5-5";
+  let r;
+  try{
+    r = await fetch("https://api.anthropic.com/v1/messages", {method:"POST",
+      headers:{"content-type":"application/json", "x-api-key":key, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true"},
+      body: JSON.stringify({model, max_tokens:2500, system:AI_SYSTEM, messages})});
+  }catch(_){ throw new Error("Nessuna connessione a internet: il coach AI ha bisogno della rete."); }
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok){
+    const msg = j?.error?.message || "";
+    if(r.status===401) throw new Error("Chiave API non valida. Controllala in Altro → Coach AI.");
+    if(/credit|balance|billing/i.test(msg)) throw new Error("Credito esaurito: ricarica nella Console di Claude.");
+    if(/usage limit/i.test(msg)) throw new Error("Hai raggiunto il limite di spesa che hai impostato nella Console.");
+    if(r.status===429 || r.status===529) throw new Error("Il servizio è occupato: riprova tra un minuto.");
+    throw new Error("Errore del coach AI: " + (msg || r.status));
+  }
+  const u = aiUsageMonth(), price = AI_MODELS[model];
+  u.calls++; u.cost += (j.usage?.input_tokens||0)/1e6*price.in + (j.usage?.output_tokens||0)/1e6*price.out; save();
+  const text = (j.content||[]).filter(c=>c.type==="text").map(c=>c.text).join("");
+  const a = text.indexOf("{"), b = text.lastIndexOf("}");
+  try{ return {json: JSON.parse(text.slice(a, b+1)), raw:text}; }catch(_){ throw new Error("Risposta del coach non leggibile, riprova."); }
+}
+const STEP1 = `Analizza in dettaglio la corsa in "corsa_da_valutare" usando TUTTI i dati disponibili (seduta prevista, passo, parziali, fasce di passo, FC e zone, metriche_calcolate, sforzo, dolori, note, messaggio_dell_atleta, contesto delle ultime settimane). Se l'atleta ha scritto un messaggio, rispondi anche a quello. Rispondi con questo JSON:
+{"valutazione":"3-5 frasi di sintesi: com'è andata rispetto all'obiettivo della seduta","voto":numero da 1 a 5 (quanto la corsa ha rispettato lo scopo della seduta, non quanto è stata veloce),
+"analisi":[{"titolo":"Rispetto della seduta","testo":"…"},{"titolo":"Passo e regolarità","testo":"…"},{"titolo":"Frequenza cardiaca e zone","testo":"…"},{"titolo":"Sforzo percepito vs dati","testo":"…"},{"titolo":"Dolori e recupero","testo":"…"},{"titolo":"Andamento delle ultime settimane","testo":"…"}],
+"bene":["max 3 cose fatte bene"],"attenzione":["max 3 cose a cui stare attento, anche nessuna"],
+"domande":[{"id":"q1","testo":"domanda breve","opzioni":["2-4 risposte brevi"]}]}
+Ogni voce di "analisi": 2-3 frasi concrete con i numeri; ometti una voce se mancano i dati per dirla (es. niente FC). Fai da 1 a 5 domande rapide, solo quelle utili per decidere come adattare le prossime sedute.`;
+const STEP2 = `Grazie alle risposte, valuta se PROPORRE all'atleta di adattare le prossime sedute (lui deciderà se accettare). Rispondi con questo JSON:
+{"commento":"5-6 righe, tono da allenatore che parla al suo atleta: resoconto della corsa alla luce delle risposte, e su cosa concentrarsi nelle prossime settimane per migliorare (1-2 punti concreti e pratici, legati all'obiettivo principale)","sintesi":"2-3 frasi: cosa proponi all'atleta per le prossime sedute e perché (sono solo proposte: sarà lui ad accettarle o rifiutarle)","modifiche":[{"id":"id della seduta","seduta":"nome","piano":"nuovo testo del piano","durata":"…","passo":"…","motivo":"1 frase"}],"prossima_uscita":"1 consiglio pratico per la prossima corsa"}
+"modifiche" può essere vuoto se il programma va bene così (massimo 3 modifiche). Cambia solo ciò che serve davvero.`;
+
+let aiRun = null;   // corsa su cui sta lavorando il coach
+function openCoach(runId, autostart){
+  const l = S.log.find(x=>x.id===runId); if(!l) return;
+  aiRun = l; renderCoachDlg(); if(!$("#aiDlg").open) $("#aiDlg").showModal();
+  if(autostart && !l.ai) aiStep1();
+}
+function renderCoachDlg(state){
+  const l = aiRun, a = l.ai, b = $("#aiBody");
+  $("#aiTitle").textContent = `Coach AI · ${esc(l.type)||"Corsa"} del ${dayLabel(l.date)}`;
+  if(state==="loading"){ b.innerHTML = `<div class="empty"><div class="spin"></div>Il coach sta guardando la corsa…</div>`; return; }
+  if(!aiKey()){ b.innerHTML = `<div class="note">Per usare il coach AI serve la tua chiave API: inseriscila in <b>Altro → Coach AI</b>.</div>`; return; }
+  if(!a){ b.innerHTML = `<div class="note">Il coach valuterà la corsa rispetto alla seduta prevista, ti farà qualche domanda veloce e, se serve, proporrà come adattare le prossime sedute.</div>
+    <label>Messaggio per il coach (facoltativo)</label><textarea id="aiNote" placeholder="es. oggi avevo poco tempo; il ginocchio tirava un po' in discesa…">${esc(l.coachNote||"")}</textarea>
+    <div class="note small">Costo indicativo: circa 3–6 centesimi di dollaro con Sonnet.</div><div class="actions"><button class="btn primary" id="aiGo">Chiedi la valutazione</button></div>`;
+    $("#aiGo").onclick = () => { l.coachNote = $("#aiNote").value.trim(); save(); aiStep1(); }; return; }
+  let h = "";
+  if(a.error) h += `<div class="card" style="background:var(--warn-soft);border-color:transparent;color:var(--warn)">⚠ ${esc(a.error)}</div>`;
+  if(a.v1){ const v = a.v1;
+    h += `<div class="card"><div class="row"><b class="sp">Valutazione</b>${v.voto?`<span class="stars">${[1,2,3,4,5].map(i=>`<b class="${i<=v.voto?"on":""}">★</b>`).join("")}</span>`:""}</div>
+      <div style="margin-top:6px">${esc(v.valutazione)}</div>
+      ${(v.analisi||[]).map(x=>`<div class="gitem" style="margin-top:6px"><b>${esc(x.titolo)}</b><div>${esc(x.testo)}</div></div>`).join("")}
+      ${(v.bene||[]).length?`<div class="small" style="margin-top:8px">${v.bene.map(x=>`✅ ${esc(x)}`).join("<br>")}</div>`:""}
+      ${(v.attenzione||[]).length?`<div class="small" style="margin-top:6px">${v.attenzione.map(x=>`⚠️ ${esc(x)}`).join("<br>")}</div>`:""}</div>`;
+    if((v.domande||[]).length && !a.v2){
+      h += `<div class="card"><b>Domande veloci</b> <span class="small muted">(tocca la risposta; puoi saltarle)</span>${v.domande.map(q=>`<div style="margin-top:10px"><div>${esc(q.testo)}</div>
+        <div class="chips" style="margin-top:6px" data-q="${esc(q.id)}">${(q.opzioni||[]).map(o=>`<button type="button" class="${a.answers?.[q.id]===o?"on":""}" data-o="${esc(o)}">${esc(o)}</button>`).join("")}</div></div>`).join("")}
+        <label>Vuoi aggiungere qualcosa? (facoltativo)</label><input id="aiExtra" value="${esc(a.extra||"")}">
+        <div class="actions"><button class="btn primary" id="aiSend">Invia risposte</button></div></div>`;
+    } else if(!a.v2) h += `<div class="actions"><button class="btn primary" id="aiSend">Chiedi come adattare le prossime sedute</button></div>`;
+  }
+  if(a.v2){ const v = a.v2;
+    if(v.commento) h += `<div class="card" style="border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset"><b>📝 Il commento del coach</b><div style="margin-top:6px;white-space:pre-line">${esc(v.commento)}</div></div>`;
+    h += `<div class="card"><b>Proposte per il programma</b><div class="small muted">Il coach propone, tu decidi: niente cambia finché non tocchi «Accetta».</div><div style="margin-top:6px">${esc(v.sintesi)}</div>
+      ${v.prossima_uscita?`<div class="note" style="margin-top:8px">👟 <b>Prossima uscita:</b> ${esc(v.prossima_uscita)}</div>`:""}</div>`;
+    (v.modifiche||[]).forEach((m,i) => { const p = S.program.find(x=>x.id===m.id), st = a.applied?.[i];
+      if(!p) return;
+      h += `<div class="card prop ${st==="si"?"good":""}"><b>${esc(p.session)} · ${weekLabel(p.start)}</b>
+        <div class="small muted" style="margin-top:4px">Prima: ${esc(p.plan)}</div>
+        <div class="what">${st==="si"?"✓ Accettata, programma aggiornato: ":st==="no"?"Rifiutata, il programma resta com'era: ":"Il coach ti propone: "}${esc(m.piano)}${m.durata?` <span class="muted">· ${esc(m.durata)}</span>`:""}${m.passo?` <span class="muted">· ${esc(m.passo)}</span>`:""}</div>
+        <div class="why">${esc(m.motivo||"")}</div>
+        ${st?`<div class="small muted" style="margin-top:6px">${st==="si"?"Accettata":"Rifiutata"}</div>`:`<div class="actions"><button class="btn primary" data-aiok="${i}">Accetta</button><button class="btn" data-aino="${i}">No, grazie</button></div>`}</div>`; });
+    if(!(v.modifiche||[]).some(m => S.program.some(x=>x.id===m.id))) h += `<div class="card note">Il coach non propone modifiche: il programma va bene così.</div>`;
+  }
+  h += `<div class="actions"><span class="sp"></span><button class="btn ghost" id="aiRedo">↻ Rifai la valutazione</button></div>`;
+  b.innerHTML = h;
+  b.querySelectorAll("[data-q]").forEach(box => box.onclick = e => { const o = e.target.closest("[data-o]"); if(!o) return;
+    (a.answers ||= {})[box.dataset.q] = o.dataset.o; box.querySelectorAll("button").forEach(x=>x.classList.toggle("on", x===o)); save(); });
+  if($("#aiSend")) $("#aiSend").onclick = () => { a.extra = $("#aiExtra")?.value || ""; aiStep2(); };
+  $("#aiRedo").onclick = () => { if(confirm("Rifare la valutazione da capo? (nuova richiesta, pochi centesimi)")){ delete aiRun.ai; save(); aiStep1(); } };
+  b.querySelectorAll("[data-aiok],[data-aino]").forEach(btn => btn.onclick = () => {
+    const i = +(btn.dataset.aiok ?? btn.dataset.aino), m = a.v2.modifiche[i]; a.applied ||= {};
+    if(btn.dataset.aiok !== undefined){
+      const p = S.program.find(x=>x.id===m.id);
+      if(p){ p.plan = m.piano || p.plan; if(m.durata) p.duration = m.durata; if(m.passo) p.pace = m.passo; if(m.seduta) p.session = m.seduta;
+        S.coachLog.push({date:today(), title:`Coach AI: ${p.session} (${weekLabel(p.start)}) modificata`}); }
+      a.applied[i] = "si"; toast("Seduta aggiornata");
+    } else a.applied[i] = "no";
+    save(); renderCoachDlg(); });
+}
+async function aiStep1(){
+  const l = aiRun; renderCoachDlg("loading");
+  const ctx = aiContext(l);
+  try{
+    const r = await callClaude([{role:"user", content: STEP1 + "\n\nDATI:\n" + JSON.stringify(ctx)}]);
+    l.ai = {date: today(), model: aiCfg().model, ctx, v1: r.json, raw1: r.raw};
+    if(!(r.json.domande||[]).length) await aiStep2(true);
+  }catch(err){ l.ai = {error: err.message}; }
+  save(); if(aiRun===l) renderCoachDlg(); render();
+}
+async function aiStep2(silent){
+  const l = aiRun, a = l.ai; if(!silent) renderCoachDlg("loading");
+  const answers = (a.v1.domande||[]).map(q => `${q.testo} → ${a.answers?.[q.id] || "(non risposto)"}`).join("\n") + (a.extra ? `\nAggiunta dell'atleta: ${a.extra}` : "");
+  try{
+    const r = await callClaude([
+      {role:"user", content: STEP1 + "\n\nDATI:\n" + JSON.stringify(a.ctx)},
+      {role:"assistant", content: a.raw1},
+      {role:"user", content: STEP2 + "\n\nRISPOSTE:\n" + (answers || "(nessuna domanda)")}]);
+    a.v2 = r.json; delete a.error;
+  }catch(err){ a.error = err.message; }
+  save(); if(!silent){ renderCoachDlg(); render(); }
+}
+function aiHistoryHtml(){
+  const list = S.log.filter(l => l.ai?.v1).sort((a,b)=>b.date.localeCompare(a.date));
+  if(!list.length) return aiKey() ? `<h2>🤖 Valutazioni del coach AI</h2><div class="card note">Le valutazioni delle tue corse compariranno qui.</div>` : "";
+  const shown = list.slice(0, aiHistAll ? 999 : 5);
+  return `<h2>🤖 Valutazioni del coach AI</h2>` + shown.map(l => { const v = l.ai.v1, mods = (l.ai.v2?.modifiche||[]).length, acc = Object.values(l.ai.applied||{}).filter(x=>x==="si").length;
+    return `<div class="card" data-aihist="${l.id}"><div class="row"><b class="sp">${esc(l.type)||"Corsa"} · ${dayLabel(l.date)}</b>${v.voto?`<span class="stars">${[1,2,3,4,5].map(i=>`<b class="${i<=v.voto?"on":""}">★</b>`).join("")}</span>`:""}</div>
+      ${(() => { const t = l.ai.v2?.commento || v.valutazione || ""; return `<div class="small muted" style="margin-top:4px">${esc(t.slice(0,180))}${t.length>180?"…":""}</div>`; })()}
+      <div class="small" style="margin-top:4px">${l.ai.v2 ? (mods ? `${mods} modific${mods===1?"a":"he"} propost${mods===1?"a":"e"} · ${acc} accettat${acc===1?"a":"e"}` : "Nessuna modifica al programma") : `<span class="pill warn">domande in sospeso</span>`}</div></div>`; }).join("")
+    + (list.length > 5 && !aiHistAll ? `<button class="btn" data-aihistall style="width:100%">Mostra tutte (${list.length})</button>` : "");
+}
+let aiHistAll = false;
+function aiSettingsHtml(){
+  const c = aiCfg(), u = aiUsageMonth(), k = aiKey();
+  return `<h2>Coach AI</h2><div class="card">
+    <div class="note">Dopo ogni corsa, Claude la valuta, ti fa qualche domanda veloce e propone come adattare le prossime sedute: decidi sempre tu. Usa la <b>tua</b> chiave API, che resta solo su questo telefono e non finisce nei backup. Alla valutazione vengono inviati ad Anthropic la corsa (senza GPS), le ultime 3 settimane, il programma delle prossime 2 settimane e gli obiettivi.</div>
+    <label>Chiave API</label><div class="row"><input id="aiKeyIn" type="password" placeholder="sk-ant-…" value="${k?"••••••••"+esc(k.slice(-4)):""}" autocomplete="off"><button class="btn" id="aiKeySave">Salva</button></div>
+    <label>Modello</label><select id="aiModel">${Object.entries(AI_MODELS).map(([id,m])=>`<option value="${id}" ${c.model===id?"selected":""}>${m.name}</option>`).join("")}</select>
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="aiAuto" style="width:auto" ${c.auto?"checked":""}> Chiedi la valutazione automaticamente dopo ogni corsa salvata</label>
+    <div class="small muted" style="margin-top:8px">Questo mese: ${u.calls} richieste · circa ${u.cost.toFixed(2)} $ (stima; il conto preciso è nella Console di Claude)</div>
+    <div class="actions"><button class="btn" id="aiTest">Prova la chiave</button>${k?`<button class="btn danger" id="aiKeyDel">Rimuovi chiave</button>`:""}</div></div>`;
+}
+function bindAiSettings(){
+  $("#aiKeySave").onclick = () => { const v = $("#aiKeyIn").value.trim(); if(v.startsWith("••")) return toast("Chiave già salvata");
+    if(!/^sk-ant-/.test(v)) return toast("La chiave inizia con sk-ant-…"); localStorage.setItem(AI_KEY, v); toast("Chiave salvata"); render(); };
+  $("#aiModel").onchange = e => { aiCfg().model = e.target.value; save(); };
+  $("#aiAuto").onchange = e => { aiCfg().auto = e.target.checked; save(); };
+  if($("#aiKeyDel")) $("#aiKeyDel").onclick = () => { if(confirm("Rimuovere la chiave da questo telefono?")){ localStorage.removeItem(AI_KEY); render(); } };
+  $("#aiTest").onclick = async () => { $("#aiTest").textContent = "Provo…";
+    try{ const r = await callClaude([{role:"user", content:'Rispondi solo con {"ok":true}'}]); toast(r.json.ok ? "✓ Funziona! Coach AI pronto" : "Risposta strana, ma la chiave funziona"); }
+    catch(err){ toast(err.message); } render(); };
 }
 
 /* ============ OBIETTIVI ============
@@ -1292,7 +1539,7 @@ function renderCoach(){
   $("#title").textContent = "Coach";
   $("#subtitle").textContent = "Proposte basate sul tuo diario: decidi tu";
   const P = coachProposals();
-  let html = goalsHtml() + `<h2>Proposte del coach</h2>`;
+  let html = goalsHtml() + aiHistoryHtml() + `<h2>Proposte del coach</h2>`;
   if(!S.log.length && !P.length) html += `<div class="card note">Registra qualche corsa (con sforzo e dolori) e qui compariranno le proposte del coach.</div>`;
   if(!S.log.length) html += `<div class="card note">Il coach legge il diario: più compili sforzo, FC, dolori e bilancio settimanale, più le proposte sono sensate.</div>`;
   P.forEach((p,i) => html += `<div class="card prop ${p.level}"><h3>${p.title}</h3><div class="why">${p.why}</div>
@@ -1559,7 +1806,7 @@ function openLog(entry, prog, imported){
   fillSessionSelect(pid);
   const p = prog || S.program.find(x=>x.id===pid);
   logF.type.value = e.type ?? (p ? p.session : "");
-  ["km","min","sec","hrAvg","hrMax","terrain","notes"].forEach(k => logF[k].value = e[k] ?? "");
+  ["km","min","sec","hrAvg","hrMax","terrain","notes","coachNote"].forEach(k => logF[k].value = e[k] ?? "");
   setScale("rpe", e.rpe);
   [1,2,3,4,5].forEach(i => logF["hz"+i].value = e.hrZonesMin?.[i-1] ?? "");
   $("#hrzBox").open = !!e.hrZonesMin;
@@ -1587,12 +1834,13 @@ $("#logDlg").addEventListener("close", () => {
   const e = { id: id || uid(), programId: logF.programId.value || null, date: logF.date.value, type: logF.type.value.trim(),
     km: num(logF.km.value), min: num(logF.min.value), sec: num(logF.sec.value), hrAvg: num(logF.hrAvg.value), hrMax: num(logF.hrMax.value),
     gain: pendingImport?.gain ?? old?.gain ?? null, splits: pendingImport?.splits ?? old?.splits ?? null, track: pendingImport?.track ?? old?.track ?? null,
-    rpe: scaleVal("rpe"), pains: painRows.filter(r=>r.level!=null||r.next!=null).map(r=>({part: r.base+(r.side?" "+r.side:""), level: r.level??0, next: r.next})), terrain: logF.terrain.value.trim(), notes: logF.notes.value.trim() };
+    rpe: scaleVal("rpe"), pains: painRows.filter(r=>r.level!=null||r.next!=null).map(r=>({part: r.base+(r.side?" "+r.side:""), level: r.level??0, next: r.next})), terrain: logF.terrain.value.trim(), notes: logF.notes.value.trim(), coachNote: logF.coachNote.value.trim() };
   const hz = [1,2,3,4,5].map(i => num(logF["hz"+i].value));
   if(hz.some(v=>v)) e.hrZonesMin = hz.map(v=>v||0);
   if(!e.track) delete e.track; if(!e.splits) delete e.splits; if(e.gain==null) delete e.gain;
   const i = S.log.findIndex(l=>l.id===e.id); if(i>=0) S.log[i]=e; else S.log.push(e);
   pendingImport = null; const fresh = checkGoals(); save(); render(); toast("Corsa salvata"); celebrate(fresh);
+  if(!fresh.length && aiKey() && aiCfg().auto && !e.ai) setTimeout(() => openCoach(e.id, true), 400);
 });
 
 /* ============ DETTAGLIO CORSA (a tutto schermo, grafici dal file dell'orologio) ============ */
@@ -1705,11 +1953,12 @@ function openRun(id){
         <span class="sp"><span style="display:block;height:18px;border-radius:5px;width:${Math.max(10,Math.min(100,w))}%;background:${COL.pace};opacity:${pk===best&&!s.part?1:.45}"></span></span>
         <b style="width:44px;text-align:right">${fmtPace(pk)}</b><span class="muted" style="width:58px;text-align:right">${s.hr?s.hr+" bpm":""}</span></div>`; }).join("")}</div></div>`;
   }
+  h += `<div class="card"><div class="row"><b class="sp">🤖 Coach AI</b><button class="btn ${l.ai?.v1?"":"primary"}" data-coach="${l.id}">${l.ai?.v1?"Apri valutazione":"Chiedi valutazione"}</button></div>
+    ${l.ai?.v1?`<div class="small muted" style="margin-top:4px">${esc(l.ai.v1.valutazione).slice(0,140)}…</div>`:""}</div>`;
   if(!tr && !l.splits) h += `<div class="card note">Per vedere grafici e tempo nelle zone importa il file dell'orologio: «Modifica» → «📂 Compila da file dell'orologio», oppure condividi il file da Huawei Health all'app Corsa.</div>`;
   $("#runBody").innerHTML = h;
   $("#runEdit").onclick = () => { closeRun(); openLog(l); };
-  $("#runDlg").showModal(); $("#runDlg").scrollTop = 0;
-  history.pushState({run:1}, "");   // il tasto «indietro» di Android chiude il dettaglio
+  if(!$("#runDlg").open){ $("#runDlg").showModal(); $("#runDlg").scrollTop = 0; history.pushState({run:1}, ""); }   // il tasto «indietro» di Android chiude il dettaglio
 }
 function closeRun(){ if($("#runDlg").open){ $("#runDlg").close(); if(history.state?.run) history.back(); } }
 $("#runBack").onclick = closeRun;
@@ -1733,6 +1982,8 @@ function runPointer(e){   // tocco o trascinamento sul grafico → linea vertica
   $("#runBody").querySelectorAll(".chart .cap").forEach(c => c.textContent = txt);
 }
 $("#runBody").addEventListener("pointerdown", runPointer);
+$("#runBody").addEventListener("click", e => { const b = e.target.closest("[data-coach]"); if(b) openCoach(b.dataset.coach, true); });
+$("#aiClose").onclick = () => { $("#aiDlg").close(); if($("#runDlg").open && aiRun) openRun(aiRun.id); else render(); };
 $("#runBody").addEventListener("pointermove", e => { if(e.buttons || e.pointerType==="touch") runPointer(e); });
 
 /* ============ FORM PROGRAMMA ============ */
@@ -1764,8 +2015,10 @@ $("#progDlg").addEventListener("close", () => {
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); scrollTo(0,0); });
 $("#fab").onclick = () => openLog(null, null);
 $("#view").addEventListener("click", e => {
-  const t = e.target.closest("[data-do],[data-editlog],[data-editprog],[data-addprog],[data-day],[data-cal],[data-newev],[data-editev],[data-week],[data-backup],[data-goto],[data-run],[data-goal],[data-newgoal],[data-newgoal-go]"); if(!t) return;
+  const t = e.target.closest("[data-do],[data-editlog],[data-editprog],[data-addprog],[data-day],[data-cal],[data-newev],[data-editev],[data-week],[data-backup],[data-goto],[data-run],[data-goal],[data-newgoal],[data-newgoal-go],[data-aihist],[data-aihistall]"); if(!t) return;
   if(t.dataset.run){ openRun(t.dataset.run); return; }
+  if(t.dataset.aihist){ openCoach(t.dataset.aihist, false); return; }
+  if(t.dataset.aihistall!==undefined){ aiHistAll = true; render(); return; }
   if(t.dataset.newgoalGo!==undefined){ tab="coach"; render(); scrollTo(0,0); return; }
   if(t.dataset.goal){ openGoal(S.goals.find(g=>g.id===t.dataset.goal)); return; }
   if(t.dataset.newgoal!==undefined){ openGoal(null); return; }
