@@ -820,7 +820,7 @@ function renderOther(){
   <h2>Ripristino</h2>
   <div class="card"><div class="note">Ricarica il programma per la mezza (16 nov → 4 apr) e le date di test. Il diario delle corse non viene toccato.</div>
     <div class="actions"><button class="btn danger" id="resetProg">Ripristina programma iniziale</button></div></div>
-  <p class="small muted" style="text-align:center">Corsa · versione 22</p>`;
+  <p class="small muted" style="text-align:center">Corsa · versione 23</p>`;
   bindAiSettings();
   $("#exportJson").onclick = exportJson;
   $("#importJson").onclick = () => $("#importFile").click();
@@ -1737,7 +1737,9 @@ function parseRunFile(text){
   // tracciato sottocampionato per i grafici
   let track = null;
   if(timed.length > 10){
-    const step = Math.max(1, Math.ceil(timed.length/300)), s = timed.filter((_,i)=>i%step===0 || i===timed.length-1);
+    // circa un punto ogni 3 secondi (max 900): abbastanza fitto da vedere anche gli allunghi da 20″
+    const dur = timed[timed.length-1].t || 1, target = Math.min(900, Math.max(300, Math.round(dur/3)));
+    const step = Math.max(1, Math.ceil(timed.length/target)), s = timed.filter((_,i)=>i%step===0 || i===timed.length-1);
     const r = (v, k=1) => isNaN(v) ? null : Math.round(v*k)/k;
     track = { t: s.map(p=>Math.round(p.t)), d: s.map(p=>Math.round(p.d)), hr: s.map(p=>r(p.hr)), alt: s.map(p=>r(p.alt,10)) };
     if(track.hr.every(v=>v==null)) delete track.hr;
@@ -1865,12 +1867,12 @@ $("#logDlg").addEventListener("close", () => {
 
 /* ============ DETTAGLIO CORSA (a tutto schermo, grafici dal file dell'orologio) ============ */
 const COL = {pace:"#2563eb", hr:"#e11d48", alt:"#a16207"};
-function smoothPace(tr){   // passo (s/km) su una finestra di ~250 m, per togliere il rumore del GPS
+function smoothPace(tr){   // passo (s/km) su una finestra di ~12 secondi: toglie il rumore del GPS ma lascia vedere allunghi e ripetute
   const out = []; let j = 0;
   for(let i=0;i<tr.d.length;i++){
-    while(j < i && tr.d[i]-tr.d[j] > 250) j++;
-    const k = Math.max(0, j-1), dd = tr.d[i]-tr.d[k], dt = tr.t[i]-tr.t[k];
-    out.push(dd > 50 ? Math.min(900, Math.max(150, dt/dd*1000)) : null);
+    while(j < i-1 && tr.t[i]-tr.t[j+1] >= 12) j++;
+    const dd = tr.d[i]-tr.d[j], dt = tr.t[i]-tr.t[j];
+    out.push(dt >= 6 && dd > 8 ? Math.min(900, Math.max(120, dt/dd*1000)) : (dt >= 6 ? 900 : null));   // fermo/camminata → fondo scala
   }
   return out;
 }
@@ -1907,11 +1909,13 @@ function zonesCard(title, bands, secs, fmtRange){
       <span class="zmin">${fmtDur(secs[i])||"–"}</span><span class="zpc">${pc>=0.5?Math.round(pc)+"%":"–"}</span></div>
       <div class="ztrack"><i style="width:${pc}%;background:${b.c}"></i></div>`; }).join("")}</div>`;
 }
-function lineChart({id, xs, ys, yFmt, invert, color, bands, area, title, unit}){
+function lineChart({id, xs, ys, yFmt, invert, color, bands, area, title, unit, capHi}){
   const W = 360, H = 220, l = 38, r = 10, t = 10, b = 22, iw = W-l-r, ih = H-t-b;
   const vals = ys.filter(v=>v!=null); if(vals.length < 2) return "";
   const sorted = [...vals].sort((a,b)=>a-b), q = p => sorted[Math.floor(p*(sorted.length-1))];
-  let lo = q(0.02), hi = q(0.98); const pad = (hi-lo)*0.15 || 5; lo -= pad; hi += pad;
+  let lo = q(0.003), hi = q(0.997);   // non taglio i picchi (allunghi)
+  if(capHi) hi = Math.min(hi, capHi);   // es. passo: le camminate oltre questo valore finiscono sul fondo della scala
+  const pad = (hi-lo)*0.08 || 5; lo -= pad; hi += pad;
   const xmax = xs[xs.length-1] || 1, X = x => l + x/xmax*iw;
   const Y = v => { const f = (Math.min(hi,Math.max(lo,v))-lo)/(hi-lo); return invert ? t + f*ih : t + ih - f*ih; };
   let g = "";
@@ -1951,7 +1955,8 @@ function openRun(id){
     const pb = paceBands(l.date), hz = zones().map(z=>({n:z.n, lo:z.lo, hi:z.hi+1, c:z.c, name:z.name}));
     hz[0].lo = 0; hz[hz.length-1].hi = 260;
     runCtx = {tr, pace: smoothPace(tr)};
-    h += lineChart({id:"pace", xs:tr.d, ys:runCtx.pace, yFmt:fmtPace, invert:true, color:COL.pace, bands:pb, title:"Passo", unit:"min/km · in alto = più veloce"});
+    const pv = runCtx.pace.filter(v=>v!=null).sort((a,b)=>a-b), med = pv[Math.floor(pv.length/2)] || 360;
+    h += lineChart({id:"pace", xs:tr.d, ys:runCtx.pace, yFmt:fmtPace, invert:true, color:COL.pace, bands:pb, title:"Passo", unit:"min/km · in alto = più veloce", capHi: Math.max(480, med+75)});
     h += zonesCard("Tempo nelle fasce di passo", pb, timeInBands(tr, runCtx.pace, pb),
       b => b.lo===0 ? `< ${fmtPace(b.hi)}` : b.hi>=1e9 ? `> ${fmtPace(b.lo)}` : `${fmtPace(b.lo)}–${fmtPace(b.hi)}`);
     if(tr.hr){
